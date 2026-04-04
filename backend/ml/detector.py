@@ -146,8 +146,16 @@ class PhishingDetector:
         if os.path.exists(model_path):
             try:
                 with open(model_path, "rb") as f:
-                    self.sklearn_model = pickle.load(f)
-                logger.info("Loaded sklearn model from model.pkl")
+                    data = pickle.load(f)
+
+                # Support both formats: raw model or dict with metadata
+                if isinstance(data, dict) and "model" in data:
+                    self.sklearn_model = data["model"]
+                    acc = data.get("accuracy", "?")
+                    logger.info(f"Loaded sklearn model (accuracy: {acc}, trained: {data.get('trained_at', '?')})")
+                else:
+                    self.sklearn_model = data
+                    logger.info("Loaded sklearn model from model.pkl")
             except Exception as e:
                 logger.warning(f"Could not load model.pkl: {e}")
 
