@@ -48,22 +48,40 @@ class PhishingDetector:
         self.sklearn_model = None
         self._try_load_sklearn_model()
 
-    # ── Primary predict method ────────────────────────────────────────────────
+    # ── Primary predict method (Ensemble: ML + Heuristic) ──────────────────────
     def predict(self, features: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Returns classification result dict:
-          { is_phishing, confidence, risk_level, reasons }
+        Ensemble detection: combines ML model + heuristic engine.
+        Final score = weighted average for maximum accuracy.
+        Returns: { is_phishing, confidence, risk_level, reasons }
         """
         # Hard override: known legitimate domain
         if features.get("is_known_legitimate"):
             return self._result(False, 0.01, [])
 
-        # Try sklearn model first (if trained)
-        if self.sklearn_model is not None:
-            return self._sklearn_predict(features)
+        # Get heuristic result (always available)
+        heuristic_result = self._heuristic_predict(features)
+        h_conf = heuristic_result["confidence"]
+        reasons = heuristic_result["reasons"]
 
-        # Fallback: heuristic engine
-        return self._heuristic_predict(features)
+        # If ML model is loaded, combine both scores
+        if self.sklearn_model is not None:
+            ml_result = self._sklearn_predict(features)
+            ml_conf = ml_result["confidence"]
+
+            # Weighted ensemble: 60% ML + 40% Heuristic
+            combined = (ml_conf * 0.6) + (h_conf * 0.4)
+
+            # If either engine is very confident, boost the score
+            if h_conf >= 0.8 or ml_conf >= 0.8:
+                combined = max(combined, max(h_conf, ml_conf))
+
+            combined = min(combined, 1.0)
+            is_phishing = combined >= PHISHING_THRESHOLD
+            return self._result(is_phishing, round(combined, 4), reasons)
+
+        # Fallback: heuristic only
+        return heuristic_result
 
     # ── Heuristic engine ──────────────────────────────────────────────────────
     def _heuristic_predict(self, f: Dict[str, Any]) -> Dict[str, Any]:

@@ -47,6 +47,16 @@ logger = logging.getLogger(__name__)
 # -- Request log (in-memory, last 500) ----------------------------------------
 request_log = []
 
+# -- Root endpoint (fixes Render 404s) ----------------------------------------
+@app.route("/", methods=["GET", "HEAD"])
+def index():
+    return jsonify({
+        "status": "online",
+        "service": "PhishGuard API",
+        "endpoints": ["/check_url", "/health"]
+    })
+
+
 
 # -- [02] Main endpoint: /check_url -------------------------------------------
 @app.route("/check_url", methods=["POST"])
