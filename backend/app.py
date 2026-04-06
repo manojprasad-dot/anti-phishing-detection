@@ -31,6 +31,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from features.extractor import extract_features
+from features.virustotal import scan_url as vt_scan
 from ml.detector import detector
 
 # -- [01] App setup -- Flask server initialized --------------------------------
@@ -92,14 +93,33 @@ def check_url():
     # [07-08] ML prediction
     prediction = detector.predict(features)
 
-    # [09] Format response: { result: "safe"/"phishing", confidence: float }
+    # [08b] VirusTotal validation (runs alongside ML)
+    vt_result = vt_scan(url)
+
+    # [09] Combine ML + VirusTotal results
     result_label = "phishing" if prediction["is_phishing"] else "safe"
     confidence = round(prediction["confidence"], 4)
 
+    # If VirusTotal flags it, override ML result
+    if vt_result["vt_available"] and vt_result["vt_is_phishing"]:
+        result_label = "phishing"
+        # Boost confidence based on VT engines
+        vt_conf = vt_result["vt_confidence"]
+        confidence = max(confidence, round(0.5 + vt_conf * 0.5, 4))
+
     response = {
         "result": result_label,
-        "confidence": confidence
+        "confidence": confidence,
     }
+
+    # Add VT details if available
+    if vt_result["vt_available"]:
+        response["virustotal"] = {
+            "malicious": vt_result["vt_malicious"],
+            "suspicious": vt_result["vt_suspicious"],
+            "harmless": vt_result["vt_harmless"],
+            "engines_total": vt_result["vt_total"],
+        }
 
     # Log result
     log_entry = {
@@ -107,6 +127,7 @@ def check_url():
         "result": result_label,
         "confidence": confidence,
         "risk_level": prediction.get("risk_level", "unknown"),
+        "vt_malicious": vt_result.get("vt_malicious", 0),
         "timestamp": ts
     }
     request_log.insert(0, log_entry)
@@ -114,8 +135,9 @@ def check_url():
         request_log.pop()
 
     # Console summary
-    icon = "[!] PHISHING" if prediction["is_phishing"] else "[OK] safe   "
-    logger.info(f"  {icon}  confidence={confidence*100:.0f}%  result={result_label}")
+    icon = "[!] PHISHING" if result_label == "phishing" else "[OK] safe   "
+    vt_info = f"  VT={vt_result['vt_malicious']}/{vt_result['vt_total']}" if vt_result["vt_available"] else ""
+    logger.info(f"  {icon}  confidence={confidence*100:.0f}%{vt_info}  result={result_label}")
 
     # [10] Return to extension
     return jsonify(response), 200
