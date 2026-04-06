@@ -130,16 +130,23 @@ function sendToContentScript(tabId, result, url) {
   });
 
   if (isPhishing) {
-    // Send warning to content.js
+    // Redirect to warning page (works even if page didn't load)
+    const reasons = (result.reasons || []).join("|");
+    const warningUrl = chrome.runtime.getURL("warning.html") +
+      `?url=${encodeURIComponent(url)}` +
+      `&confidence=${result.confidence}` +
+      `&reasons=${encodeURIComponent(reasons)}`;
+
+    chrome.tabs.update(tabId, { url: warningUrl });
+
+    // Also try to send to content.js (backup for pages that loaded)
     chrome.tabs.sendMessage(tabId, {
       type: "SHOW_WARNING",
       url: url,
       result: result.result,
       confidence: result.confidence,
       reasons: result.reasons || []
-    }).catch((err) => {
-      console.warn(`[PhishGuard] Could not reach content.js on tab ${tabId}:`, err.message);
-    });
+    }).catch(() => {});
 
     // System notification
     chrome.notifications.create({
