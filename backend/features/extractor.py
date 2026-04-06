@@ -45,19 +45,30 @@ BRAND_NAMES = [
     "yahoo", "outlook", "icloud", "coinbase", "binance",
 ]
 
+# Brand-owned TLDs (e.g., antigravity.google, store.apple)
+# These are NOT phishing — they're owned by the brand itself.
+BRAND_OWNED_TLDS = {
+    ".google", ".apple", ".microsoft", ".amazon", ".youtube",
+    ".netflix", ".facebook", ".instagram", ".linkedin",
+    ".android", ".chrome", ".gmail", ".windows",
+}
+
 LEGITIMATE_DOMAINS = {
     "google.com", "youtube.com", "facebook.com", "amazon.com", "wikipedia.org",
-    "twitter.com", "reddit.com", "linkedin.com", "github.com", "stackoverflow.com",
-    "microsoft.com", "apple.com", "paypal.com", "netflix.com", "spotify.com",
-    "instagram.com", "tiktok.com", "yahoo.com", "ebay.com", "adobe.com",
-    "dropbox.com", "zoom.us", "slack.com", "notion.so", "figma.com",
-    "medium.com", "quora.com", "pinterest.com", "wordpress.com", "cloudflare.com",
-    "stripe.com", "twitch.tv", "discord.com", "whatsapp.com", "telegram.org",
-    "bbc.com", "cnn.com", "nytimes.com", "walmart.com", "target.com",
-    "chase.com", "bankofamerica.com", "wellsfargo.com", "citibank.com",
+    "twitter.com", "x.com", "reddit.com", "linkedin.com", "github.com",
+    "stackoverflow.com", "microsoft.com", "apple.com", "paypal.com",
+    "netflix.com", "spotify.com", "instagram.com", "tiktok.com", "yahoo.com",
+    "ebay.com", "adobe.com", "dropbox.com", "zoom.us", "slack.com",
+    "notion.so", "figma.com", "medium.com", "quora.com", "pinterest.com",
+    "wordpress.com", "cloudflare.com", "stripe.com", "twitch.tv",
+    "discord.com", "whatsapp.com", "telegram.org", "bbc.com", "cnn.com",
+    "nytimes.com", "walmart.com", "target.com", "chase.com",
+    "bankofamerica.com", "wellsfargo.com", "citibank.com",
     "hulu.com", "disneyplus.com", "airbnb.com", "booking.com", "expedia.com",
     "coursera.org", "udemy.com", "aws.amazon.com", "azure.microsoft.com",
     "cloud.google.com", "salesforce.com", "shopify.com", "etsy.com",
+    "onrender.com", "render.com", "vercel.app", "netlify.app",
+    "herokuapp.com", "firebase.google.com", "web.app",
 }
 
 SENSITIVE_PATH_TERMS = [
@@ -169,11 +180,20 @@ def extract_features(url: str) -> Dict[str, Any]:
             "%2f" in full_url or "%40" in full_url or
             "%3a" in full_url or "%3d" in full_url
         )
-        features["is_known_legitimate"] = int(root_domain in LEGITIMATE_DOMAINS)
+
+        # Check if domain is a brand-owned TLD (e.g. antigravity.google)
+        is_brand_tld = any(hostname.endswith(tld) for tld in BRAND_OWNED_TLDS)
+
+        features["is_known_legitimate"] = int(
+            root_domain in LEGITIMATE_DOMAINS or is_brand_tld
+        )
 
         # Brand impersonation
+
         brand_in_host = any(
-            b in hostname and root_domain not in LEGITIMATE_DOMAINS
+            b in hostname
+            and root_domain not in LEGITIMATE_DOMAINS
+            and not is_brand_tld
             for b in BRAND_NAMES
         )
         features["brand_in_hostname"]   = int(brand_in_host)
@@ -181,6 +201,7 @@ def extract_features(url: str) -> Dict[str, Any]:
         brand_hyphen = any(
             (f"{b}-" in hostname or f"-{b}" in hostname)
             and root_domain not in LEGITIMATE_DOMAINS
+            and not is_brand_tld
             for b in BRAND_NAMES
         )
         features["brand_hyphenated"]    = int(brand_hyphen)
