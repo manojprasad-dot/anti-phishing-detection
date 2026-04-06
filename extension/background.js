@@ -46,13 +46,15 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 // ── Send URL to backend /check_url (with retry for cold starts) ─
 async function sendForAnalysis(url, tabId) {
-  const MAX_RETRIES = 2;
+  const MAX_RETRIES = 3;
   let lastError = null;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
+      // First attempt: 30s (Render cold start), retries: 15s
+      const timeoutMs = attempt === 0 ? 30000 : 15000;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       const res = await fetch(CHECK_URL_ENDPOINT, {
         method: "POST",
@@ -93,9 +95,10 @@ async function sendForAnalysis(url, tabId) {
       lastError = err;
 
       if (attempt < MAX_RETRIES) {
-        // Render cold start takes ~15-30s — wait and retry
-        console.warn(`[PhishGuard] Attempt ${attempt + 1} failed: ${err.message}. Retrying...`);
-        await new Promise(r => setTimeout(r, 1500)); // Wait 1.5s before retry
+        // Render cold start takes ~30s — give it time
+        const delay = attempt === 0 ? 5000 : 3000;
+        console.warn(`[PhishGuard] Attempt ${attempt + 1} failed: ${err.message}. Retrying in ${delay/1000}s...`);
+        await new Promise(r => setTimeout(r, delay));
       }
     }
   }
