@@ -52,7 +52,7 @@ async function sendForAnalysis(url, tabId) {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+      const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
 
       const res = await fetch(CHECK_URL_ENDPOINT, {
         method: "POST",
@@ -84,10 +84,8 @@ async function sendForAnalysis(url, tabId) {
       }
       chrome.storage.local.set({ stats });
 
-      // Send result to content.js for on-page display
-      setTimeout(() => {
-        sendToContentScript(tabId, result, url);
-      }, 300);
+      // Send result to content.js immediately
+      sendToContentScript(tabId, result, url);
 
       return; // Success — exit retry loop
 
@@ -97,7 +95,7 @@ async function sendForAnalysis(url, tabId) {
       if (attempt < MAX_RETRIES) {
         // Render cold start takes ~15-30s — wait and retry
         console.warn(`[PhishGuard] Attempt ${attempt + 1} failed: ${err.message}. Retrying...`);
-        await new Promise(r => setTimeout(r, 3000)); // Wait 3s before retry
+        await new Promise(r => setTimeout(r, 1500)); // Wait 1.5s before retry
       }
     }
   }
