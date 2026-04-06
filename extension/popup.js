@@ -1,5 +1,3 @@
-// PhishGuard — popup.js
-// Extension popup dashboard logic
 document.addEventListener("DOMContentLoaded", async () => {
   await loadTab();
   await loadStats();
@@ -15,9 +13,61 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
   });
 
+  // Clear history
   document.getElementById("btn-clear").onclick = async () => {
     chrome.runtime.sendMessage({ type: "CLEAR_HISTORY" });
     await loadStats(); await loadAlerts(); await loadFeedback();
+  };
+
+  // ── Report Website Button ──────────────────────────────────────
+  document.getElementById("btn-report").onclick = async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab && tab.url) {
+      document.getElementById("report-url").textContent = new URL(tab.url).hostname;
+      document.getElementById("report-modal").style.display = "flex";
+    }
+  };
+
+  document.getElementById("report-cancel").onclick = () => {
+    document.getElementById("report-modal").style.display = "none";
+  };
+
+  document.getElementById("report-submit").onclick = async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const reason = document.getElementById("report-reason").value;
+    const notes = document.getElementById("report-notes").value;
+
+    chrome.runtime.sendMessage({
+      type: "REPORT_WEBSITE",
+      url: tab.url,
+      reason: `${reason}${notes ? ': ' + notes : ''}`
+    });
+
+    document.getElementById("report-modal").style.display = "none";
+    document.getElementById("report-notes").value = "";
+
+    // Show success briefly
+    const btn = document.getElementById("btn-report");
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓ Reported!';
+    btn.style.background = 'rgba(52,199,89,.15)';
+    btn.style.color = '#34C759';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; btn.style.color = ''; }, 2000);
+  };
+
+  // ── Quick Scan Button ──────────────────────────────────────────
+  document.getElementById("btn-quickscan").onclick = async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.url || !tab.url.startsWith("http")) return;
+
+    const btn = document.getElementById("btn-quickscan");
+    btn.innerHTML = '⟳ Scanning...';
+
+    // Trigger rescan via background
+    chrome.runtime.sendMessage({ type: "QUICK_SCAN", tabId: tab.id, url: tab.url });
+
+    // Close popup after small delay
+    setTimeout(() => window.close(), 800);
   };
 });
 

@@ -157,6 +157,32 @@ def analyze():
     return jsonify(result), 200
 
 
+# -- Report endpoint ----------------------------------------------------------
+report_log = []
+
+@app.route("/report", methods=["POST"])
+def report_website():
+    """Receive user reports of suspicious websites."""
+    data = request.get_json(silent=True)
+    if not data or "url" not in data:
+        return jsonify({"error": "Missing 'url' field"}), 400
+
+    report = {
+        "url": str(data["url"]).strip(),
+        "reason": data.get("reason", "User reported"),
+        "timestamp": data.get("timestamp", datetime.datetime.utcnow().isoformat()),
+        "ip": request.remote_addr,
+    }
+
+    report_log.insert(0, report)
+    if len(report_log) > 200:
+        report_log.pop()
+
+    logger.info(f"[REPORT] {report['url'][:60]} — reason: {report['reason']}")
+
+    return jsonify({"status": "received", "message": "Thank you for your report!"}), 200
+
+
 # -- Analytics endpoint -------------------------------------------------------
 @app.route("/analytics", methods=["GET"])
 def analytics():

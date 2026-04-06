@@ -83,6 +83,37 @@
       cursor:pointer;font-family:'Outfit',sans-serif;transition:color .2s;padding:0}
     .btn-sm:hover{color:var(--red)}
     .ver{font-size:10px;color:#333}
+
+    /* ── Report & Quick Scan buttons ─────────── */
+    .action-btns{padding:8px 18px;border-top:1px solid var(--b);display:flex;gap:8px}
+    .btn-action{flex:1;padding:8px 10px;border-radius:8px;font-size:11px;font-weight:600;
+      font-family:'Outfit',sans-serif;cursor:pointer;transition:all .2s;
+      display:flex;align-items:center;justify-content:center;gap:5px;border:none}
+    .btn-report{background:rgba(255,59,48,.1);color:var(--red);border:1px solid rgba(255,59,48,.2)}
+    .btn-report:hover{background:rgba(255,59,48,.2)}
+    .btn-scan{background:rgba(10,132,255,.1);color:var(--blu);border:1px solid rgba(10,132,255,.2)}
+    .btn-scan:hover{background:rgba(10,132,255,.2)}
+    .shortcut{font-size:9px;color:#555;background:rgba(255,255,255,.05);padding:1px 5px;
+      border-radius:3px;border:1px solid rgba(255,255,255,.08)}
+
+    /* ── Report Modal ────────────────────────── */
+    .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;
+      display:flex;align-items:center;justify-content:center}
+    .modal{background:var(--s1);border:1px solid var(--b);border-radius:12px;
+      width:300px;padding:20px;animation:fadeIn .2s ease}
+    @keyframes fadeIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+    .modal h3{font-size:14px;margin-bottom:12px;color:var(--t)}
+    .modal select,.modal textarea{width:100%;background:var(--s2);color:var(--t);
+      border:1px solid var(--b);border-radius:6px;padding:8px;font-size:12px;
+      font-family:'Outfit',sans-serif;margin-bottom:10px;resize:vertical}
+    .modal textarea{height:60px}
+    .modal-btns{display:flex;gap:8px;justify-content:flex-end}
+    .modal-btns button{padding:7px 16px;border-radius:6px;font-size:12px;font-weight:600;
+      cursor:pointer;font-family:'Outfit',sans-serif;border:none;transition:all .2s}
+    .modal-submit{background:var(--red);color:#fff}
+    .modal-submit:hover{background:#e02020}
+    .modal-cancel{background:var(--s2);color:var(--m);border:1px solid var(--b)!important}
+    .modal-cancel:hover{color:var(--t)}
   </style>
 </head>
 <body>
@@ -135,10 +166,48 @@
     </div>
   </div>
 
+  <!-- Action Buttons -->
+  <div class="action-btns">
+    <button class="btn-action btn-report" id="btn-report">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+        <line x1="4" y1="22" x2="4" y2="15"/>
+      </svg>
+      Report Website
+    </button>
+    <button class="btn-action btn-scan" id="btn-quickscan">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      Quick Scan <span class="shortcut">Ctrl+Shift+P</span>
+    </button>
+  </div>
+
   <!-- Actions -->
   <div class="actbar">
     <button class="btn-sm" id="btn-clear">Clear History</button>
-    <div class="ver">PhishGuard v1.0</div>
+    <div class="ver">PhishGuard v1.1</div>
+  </div>
+
+  <!-- Report Modal (hidden) -->
+  <div class="modal-bg" id="report-modal" style="display:none">
+    <div class="modal">
+      <h3>🚩 Report Suspicious Website</h3>
+      <div class="lbl" style="margin-bottom:6px">Website</div>
+      <div class="url-txt" id="report-url" style="margin-bottom:10px">—</div>
+      <select id="report-reason">
+        <option value="phishing">Phishing / Scam</option>
+        <option value="malware">Malware / Virus</option>
+        <option value="fake">Fake / Impersonation</option>
+        <option value="spam">Spam / Misleading</option>
+        <option value="other">Other</option>
+      </select>
+      <textarea id="report-notes" placeholder="Additional details (optional)..."></textarea>
+      <div class="modal-btns">
+        <button class="modal-cancel" id="report-cancel">Cancel</button>
+        <button class="modal-submit" id="report-submit">Submit Report</button>
+      </div>
+    </div>
   </div>
 
   <script src="popup.js"></script>

@@ -181,10 +181,41 @@ function sendToContentScript(tabId, result, url) {
   });
 }
 
+// ── Keyboard shortcut: Ctrl+Shift+P ────────────────────────────
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command === "quick-scan") {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.url) return;
+    if (!tab.url.startsWith("http://") && !tab.url.startsWith("https://")) return;
+
+    console.log(`[PhishGuard] Quick Scan (Ctrl+Shift+P): ${tab.url}`);
+
+    // Force rescan (clear cache for this tab)
+    scannedTabs.delete(tab.id);
+
+    // Show scanning notification
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: "icons/icon48.png",
+      title: "PhishGuard — Quick Scan",
+      message: `Scanning: ${safeHostname(tab.url)}`,
+      priority: 1
+    });
+
+    await sendForAnalysis(tab.url, tab.id);
+  }
+});
+
 // ── Popup message handler ──────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.type === "GET_STATS") {
     reply({ stats });
+  }
+  if (msg.type === "QUICK_SCAN") {
+    // Force rescan from popup
+    scannedTabs.delete(msg.tabId);
+    sendForAnalysis(msg.url, msg.tabId);
+    reply({ ok: true });
   }
   if (msg.type === "CLEAR_HISTORY") {
     stats = { totalScanned: 0, phishingDetected: 0, safeDetected: 0, errors: 0 };
@@ -196,6 +227,37 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       const feedbackLog = [msg.feedback, ...(d.feedbackLog || [])].slice(0, 200);
       chrome.storage.local.set({ feedbackLog });
     });
+    reply({ ok: true });
+  }
+  if (msg.type === "REPORT_WEBSITE") {
+    const report = {
+      url: msg.url,
+      reason: msg.reason || "User reported as suspicious",
+      timestamp: new Date().toISOString()
+    };
+
+    // Save to local reports
+    chrome.storage.local.get(["reports"], (d) => {
+      const reports = [report, ...(d.reports || [])].slice(0, 100);
+      chrome.storage.local.set({ reports });
+    });
+
+    // Send report to backend (fire and forget)
+    fetch(`${API_BASE}/report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(report)
+    }).catch(() => {});
+
+    // Notify user
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: "icons/icon48.png",
+      title: "PhishGuard — Report Submitted",
+      message: `Thank you! ${safeHostname(msg.url)} has been reported.`,
+      priority: 1
+    });
+
     reply({ ok: true });
   }
   return true;

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PhishGuard — AI Phishing Detector",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "AI-powered real-time phishing detection. Monitors URLs, detects threats, and alerts users instantly.",
   "permissions": [
     "tabs",
@@ -34,5 +34,14 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "commands": {
+    "quick-scan": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+P",
+        "mac": "Command+Shift+P"
+      },
+      "description": "Quick scan current page"
+    }
   }
 }
