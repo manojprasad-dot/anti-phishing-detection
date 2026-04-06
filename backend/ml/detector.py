@@ -1,7 +1,7 @@
 """
-PhishGuard — ml/detector.py
+PhishGuard -- ml/detector.py
 MODULE 4: Analytics & Machine Learning Module
-Phishing Detection Model — Heuristic rule engine + scikit-learn classifier.
+Ensemble Phishing Detector: XGBoost ML model + Heuristic rule engine.
 
 Process Flow Reference:
   [08] Feature vector forwarded to the phishing detection model
@@ -11,11 +11,12 @@ Process Flow Reference:
 import os
 import pickle
 import logging
+import numpy as np
 from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
-# ── Feature weights for the heuristic engine ──────────────────────────────────
+# -- Feature weights for the heuristic engine ----------------------------------
 FEATURE_WEIGHTS = {
     "is_ip_address":           0.65,
     "brand_hyphenated":        0.55,
@@ -25,12 +26,14 @@ FEATURE_WEIGHTS = {
     "has_at_symbol":           0.35,
     "has_lookalike_chars":     0.30,
     "has_sensitive_path":      0.25,
+    "is_shortened_url":        0.30,
     "num_subdomains":          0.08,   # per subdomain above 2
     "has_encoded_chars":       0.20,
     "has_redirect_param":      0.18,
     "has_double_slash":        0.18,
     "url_length_penalty":      0.10,   # applied if url_length > 100
     "no_https_penalty":        0.15,   # applied if uses_https == 0
+    "high_entropy_penalty":    0.15,   # applied if hostname_entropy > 3.5
     # Negatives (reduces score)
     "is_known_legitimate":    -1.00,   # hard override
 }
@@ -42,16 +45,18 @@ class PhishingDetector:
     """
     [08] Feature vector forwarded to the phishing detection model.
     [09] Prediction result generated.
+    Ensemble: XGBoost (70%) + Heuristic rules (30%)
     """
 
     def __init__(self):
-        self.sklearn_model = None
-        self._try_load_sklearn_model()
+        self.ml_model = None
+        self.model_meta = {}
+        self._try_load_model()
 
-    # ── Primary predict method (Ensemble: ML + Heuristic) ──────────────────────
+    # -- Primary predict method (Ensemble: ML + Heuristic) ---------------------
     def predict(self, features: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Ensemble detection: combines ML model + heuristic engine.
+        Ensemble detection: combines XGBoost ML model + heuristic engine.
         Final score = weighted average for maximum accuracy.
         Returns: { is_phishing, confidence, risk_level, reasons }
         """
@@ -65,12 +70,12 @@ class PhishingDetector:
         reasons = heuristic_result["reasons"]
 
         # If ML model is loaded, combine both scores
-        if self.sklearn_model is not None:
-            ml_result = self._sklearn_predict(features)
+        if self.ml_model is not None:
+            ml_result = self._ml_predict(features)
             ml_conf = ml_result["confidence"]
 
-            # Weighted ensemble: 60% ML + 40% Heuristic
-            combined = (ml_conf * 0.6) + (h_conf * 0.4)
+            # Weighted ensemble: 70% ML + 30% Heuristic
+            combined = (ml_conf * 0.7) + (h_conf * 0.3)
 
             # If either engine is very confident, boost the score
             if h_conf >= 0.8 or ml_conf >= 0.8:
@@ -83,7 +88,7 @@ class PhishingDetector:
         # Fallback: heuristic only
         return heuristic_result
 
-    # ── Heuristic engine ──────────────────────────────────────────────────────
+    # -- Heuristic engine ------------------------------------------------------
     def _heuristic_predict(self, f: Dict[str, Any]) -> Dict[str, Any]:
         score   = 0.0
         reasons: List[str] = []
@@ -102,7 +107,7 @@ class PhishingDetector:
 
         if f.get("has_suspicious_keyword"):
             score += FEATURE_WEIGHTS["has_suspicious_keyword"]
-            reasons.append("URL contains phishing-related keywords (e.g. 'verify', 'secure-login')")
+            reasons.append("URL contains phishing-related keywords")
 
         if f.get("is_known_tld_suspicious"):
             score += FEATURE_WEIGHTS["is_known_tld_suspicious"]
@@ -114,11 +119,15 @@ class PhishingDetector:
 
         if f.get("has_lookalike_chars"):
             score += FEATURE_WEIGHTS["has_lookalike_chars"]
-            reasons.append("Hostname uses lookalike characters (0→o, 1→l) to mimic real domains")
+            reasons.append("Hostname uses lookalike characters (0->o, 1->l)")
 
         if f.get("has_sensitive_path"):
             score += FEATURE_WEIGHTS["has_sensitive_path"]
             reasons.append("URL path contains sensitive terms like 'login', 'account', 'verify'")
+
+        if f.get("is_shortened_url"):
+            score += FEATURE_WEIGHTS["is_shortened_url"]
+            reasons.append("URL uses a shortening service to hide the real destination")
 
         subdomains = max(0, int(f.get("num_subdomains", 0)) - 2)
         if subdomains > 0:
@@ -145,37 +154,62 @@ class PhishingDetector:
             score += FEATURE_WEIGHTS["no_https_penalty"]
             reasons.append("Page served over HTTP (not encrypted HTTPS)")
 
+        if float(f.get("hostname_entropy", 0)) > 3.5:
+            score += FEATURE_WEIGHTS["high_entropy_penalty"]
+            reasons.append("Hostname has high entropy (randomly generated domain)")
+
         confidence = min(score, 1.0)
         return self._result(confidence >= PHISHING_THRESHOLD, confidence, reasons[:5])
 
-    # ── Sklearn model (stub — train with real data) ───────────────────────────
-    def _sklearn_predict(self, features: Dict[str, Any]) -> Dict[str, Any]:
+    # -- ML model prediction ---------------------------------------------------
+    def _ml_predict(self, features: Dict[str, Any]) -> Dict[str, Any]:
         from features.extractor import _feature_names
         try:
-            vector = [[features.get(k, 0) for k in _feature_names()]]
-            proba  = self.sklearn_model.predict_proba(vector)[0][1]  # P(phishing)
-            return self._result(proba >= PHISHING_THRESHOLD, round(proba, 4), [])
+            vector = np.array(
+                [[float(features.get(k, 0)) for k in _feature_names()]],
+                dtype=np.float32
+            )
+            vector = np.nan_to_num(vector, nan=0.0)
+            proba = self.ml_model.predict_proba(vector)[0][1]  # P(phishing)
+            return self._result(proba >= PHISHING_THRESHOLD, round(float(proba), 4), [])
         except Exception as e:
-            logger.warning(f"sklearn predict failed, falling back: {e}")
+            logger.warning(f"ML predict failed, falling back: {e}")
             return self._heuristic_predict(features)
 
-    def _try_load_sklearn_model(self):
+    def _try_load_model(self):
         model_path = os.path.join(os.path.dirname(__file__), "model.pkl")
         if os.path.exists(model_path):
             try:
                 with open(model_path, "rb") as f:
                     data = pickle.load(f)
 
-                # Support both formats: raw model or dict with metadata
                 if isinstance(data, dict) and "model" in data:
-                    self.sklearn_model = data["model"]
+                    self.ml_model = data["model"]
+                    self.model_meta = data
+                    model_type = data.get("model_type", "unknown")
                     acc = data.get("accuracy", "?")
-                    logger.info(f"Loaded sklearn model (accuracy: {acc}, trained: {data.get('trained_at', '?')})")
+                    logger.info(
+                        f"Loaded {model_type} model "
+                        f"(accuracy: {acc}, trained: {data.get('trained_at', '?')})"
+                    )
                 else:
-                    self.sklearn_model = data
-                    logger.info("Loaded sklearn model from model.pkl")
+                    self.ml_model = data
+                    logger.info("Loaded ML model from model.pkl")
             except Exception as e:
                 logger.warning(f"Could not load model.pkl: {e}")
+
+    def get_model_info(self) -> Dict[str, Any]:
+        """Return model metadata for /health endpoint."""
+        if self.ml_model is not None:
+            return {
+                "type": self.model_meta.get("model_type", "sklearn"),
+                "accuracy": self.model_meta.get("accuracy"),
+                "f1": self.model_meta.get("f1"),
+                "features": self.model_meta.get("n_features", 30),
+                "trained_at": self.model_meta.get("trained_at"),
+                "dataset": self.model_meta.get("dataset"),
+            }
+        return {"type": "heuristic"}
 
     @staticmethod
     def _result(is_phishing: bool, confidence: float, reasons: List[str]) -> Dict[str, Any]:
@@ -188,42 +222,6 @@ class PhishingDetector:
             "risk_level":  "safe" if not is_phishing and confidence < 0.15 else risk,
             "reasons":     reasons
         }
-
-
-# ── Training stub ─────────────────────────────────────────────────────────────
-def train(urls: list, labels: list, save_path: str = "ml/model.pkl"):
-    """
-    Train a RandomForestClassifier on labelled URL data.
-    labels: list of 0 (safe) or 1 (phishing)
-
-    Example:
-        from ml.detector import train
-        train(["https://google.com", "http://paypa1.xyz/login"], [0, 1])
-    """
-    try:
-        from sklearn.ensemble import RandomForestClassifier
-        from sklearn.model_selection import train_test_split
-        from sklearn.metrics import classification_report
-        from features.extractor import feature_vector
-        import pickle
-
-        X = [feature_vector(u) for u in urls]
-        y = labels
-
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-        clf = RandomForestClassifier(n_estimators=100, random_state=42)
-        clf.fit(X_train, y_train)
-
-        preds = clf.predict(X_test)
-        print(classification_report(y_test, preds, target_names=["Safe", "Phishing"]))
-
-        with open(save_path, "wb") as f:
-            pickle.dump(clf, f)
-        print(f"Model saved to {save_path}")
-
-    except ImportError:
-        print("scikit-learn not installed. Run: pip install scikit-learn")
 
 
 # Singleton detector instance
