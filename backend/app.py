@@ -31,7 +31,12 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from features.extractor import extract_features
-from features.virustotal import scan_url as vt_scan
+try:
+    from features.virustotal import scan_url as vt_scan
+except Exception:
+    def vt_scan(url):
+        return {"vt_available": False, "vt_malicious": 0, "vt_suspicious": 0,
+                "vt_harmless": 0, "vt_total": 0, "vt_is_phishing": False, "vt_confidence": 0.0}
 from ml.detector import detector
 
 # -- [01] App setup -- Flask server initialized --------------------------------
