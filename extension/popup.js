@@ -69,6 +69,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Close popup after small delay
     setTimeout(() => window.close(), 800);
   };
+  // ── Email Scanner Button ────────────────────────────────────────
+  document.getElementById("btn-email-scanner").onclick = () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL("email_scanner.html") });
+  };
 });
 
 async function loadTab() {

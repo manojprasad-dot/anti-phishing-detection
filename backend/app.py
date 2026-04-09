@@ -31,6 +31,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from features.extractor import extract_features
+from features.email_extractor import extract_email_features, email_feature_names
 try:
     from features.virustotal import scan_url as vt_scan
 except Exception:
@@ -38,6 +39,7 @@ except Exception:
         return {"vt_available": False, "vt_malicious": 0, "vt_suspicious": 0,
                 "vt_harmless": 0, "vt_total": 0, "vt_is_phishing": False, "vt_confidence": 0.0}
 from ml.detector import detector
+from ml.email_detector import email_detector
 
 # -- [01] App setup -- Flask server initialized --------------------------------
 app = Flask(__name__)
@@ -59,7 +61,7 @@ def index():
     return jsonify({
         "status": "online",
         "service": "PhishGuard API",
-        "endpoints": ["/check_url", "/health"]
+        "endpoints": ["/check_url", "/check_email", "/health"]
     })
 
 
@@ -129,6 +131,69 @@ def check_url():
     logger.info(f"  {icon}  confidence={confidence*100:.0f}%  result={result_label}")
 
     # [10] Return to extension
+    return jsonify(response), 200
+
+
+# -- [MODULE 5] Email phishing endpoint ----------------------------------------
+@app.route("/check_email", methods=["POST"])
+def check_email():
+    """
+    Email phishing analysis endpoint.
+
+    Receives:  { "email_text": "...", "sender": "...", "subject": "..." }
+    Returns:   { "result": "safe" | "phishing", "confidence": 0.89, "reasons": [...] }
+    """
+    data = request.get_json(silent=True)
+    if not data or "email_text" not in data:
+        return jsonify({"error": "Missing 'email_text' field"}), 400
+
+    email_text = str(data["email_text"]).strip()
+    sender = str(data.get("sender", "")).strip()
+    subject = str(data.get("subject", "")).strip()
+    ts = datetime.datetime.utcnow().isoformat()
+
+    if not email_text:
+        return jsonify({"error": "Email text cannot be empty"}), 400
+
+    logger.info(f"[check_email] Analyzing email — sender={sender[:40]}, subject={subject[:40]}")
+
+    # Extract email features
+    features = extract_email_features(email_text, sender, subject)
+
+    # Cross-check links in email body with URL phishing model
+    import re as _re
+    urls_in_email = _re.findall(r'https?://[^\s<>"\'\)\]]+', email_text)
+    url_scores = []
+    for url in urls_in_email[:5]:  # limit to 5 URLs
+        try:
+            url_features = extract_features(url)
+            url_result = detector.predict(url_features)
+            url_scores.append(url_result["confidence"])
+        except Exception:
+            pass
+
+    if url_scores:
+        features["url_phishing_score"] = round(sum(url_scores) / len(url_scores), 4)
+
+    # Run email ML + heuristic detection
+    prediction = email_detector.predict(features)
+
+    result_label = "phishing" if prediction["is_phishing"] else "safe"
+    confidence = round(prediction["confidence"], 4)
+
+    response = {
+        "result": result_label,
+        "confidence": confidence,
+        "risk_level": prediction.get("risk_level", "unknown"),
+        "reasons": prediction.get("reasons", []),
+        "links_analyzed": len(url_scores),
+        "avg_link_score": round(sum(url_scores) / max(len(url_scores), 1), 4) if url_scores else None,
+    }
+
+    # Log result
+    icon = "[!] PHISHING" if result_label == "phishing" else "[OK] safe   "
+    logger.info(f"  {icon}  confidence={confidence*100:.0f}%  email from={sender[:40]}")
+
     return jsonify(response), 200
 
 
@@ -213,8 +278,9 @@ def analytics():
 def health():
     return jsonify({
         "status": "ok",
-        "service": "PhishGuard API v1.0",
-        "model": "sklearn" if detector.sklearn_model else "heuristic",
+        "service": "PhishGuard API v2.0",
+        "url_model": detector.get_model_info(),
+        "email_model": email_detector.get_model_info(),
         "timestamp": datetime.datetime.utcnow().isoformat()
     })
 
@@ -265,10 +331,11 @@ def feedback():
 # -- [01] Start server (multi-device access: host=0.0.0.0) --------------------
 if __name__ == "__main__":
     print("\n" + "="*54)
-    print("  PhishGuard API Server")
-    print("  >  http://localhost:5000/check_url  - main endpoint")
-    print("  >  http://localhost:5000/test        - run test batch")
-    print("  >  http://localhost:5000/analytics   - stats dashboard")
-    print("  >  http://localhost:5000/health      - service health")
+    print("  PhishGuard API Server v2.0")
+    print("  >  /check_url   - URL phishing detection")
+    print("  >  /check_email - Email phishing detection")
+    print("  >  /test        - run test batch")
+    print("  >  /analytics   - stats dashboard")
+    print("  >  /health      - service health")
     print("="*54 + "\n")
     app.run(debug=True, port=5000, host="0.0.0.0")
