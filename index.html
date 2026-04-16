@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhishGuard — AI-Powered Anti-Phishing Browser Extension</title>
+    <meta name="description" content="Download PhishGuard, the AI-powered Chrome extension that detects phishing websites and malicious emails in real-time. Protect yourself with advanced machine learning security.">
+    <link rel="icon" type="image/png" href="icon128.png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Animated background particles -->
+    <canvas id="particle-canvas"></canvas>
+
+    <!-- Navigation -->
+    <nav id="navbar">
+        <div class="nav-container">
+            <a href="#" class="nav-logo">
+                <img src="icon128.png" alt="PhishGuard" class="nav-icon">
+                <span>PhishGuard</span>
+            </a>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#how-it-works">How It Works</a>
+                <a href="#stats">Stats</a>
+                <a href="#install">Install</a>
+                <a href="#download" class="nav-cta">Download</a>
+            </div>
+            <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Toggle menu">
+                <span></span><span></span><span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section id="hero">
+        <div class="hero-glow hero-glow-1"></div>
+        <div class="hero-glow hero-glow-2"></div>
+        <div class="hero-content">
+            <div class="hero-badge">
+                <span class="badge-dot"></span>
+                AI-Powered Security · v2.0
+            </div>
+            <h1>
+                Browse the Web<br>
+                <span class="gradient-text">Without Fear</span>
+            </h1>
+            <p class="hero-subtitle">
+                PhishGuard uses advanced machine learning to detect phishing websites 
+                and malicious emails in real-time — before you click, type, or submit.
+            </p>
+            <div class="hero-actions">
+                <a href="phishguard-extension.zip" download class="btn btn-primary" id="hero-download-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download Extension
+                </a>
+                <a href="#how-it-works" class="btn btn-ghost">
+                    Learn More
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </a>
+            </div>
+            <div class="hero-trust">
+                <div class="trust-avatars">
+                    <div class="avatar" style="background: linear-gradient(135deg, #667eea, #764ba2);">🛡️</div>
+                    <div class="avatar" style="background: linear-gradient(135deg, #f093fb, #f5576c);">🔒</div>
+                    <div class="avatar" style="background: linear-gradient(135deg, #4facfe, #00f2fe);">✅</div>
+                </div>
+                <span>Trusted by security-conscious users worldwide</span>
+            </div>
+        </div>
+        <div class="hero-visual">
+            <div class="browser-mockup">
+                <div class="browser-header">
+                    <div class="browser-dots">
+                        <span class="dot red"></span>
+                        <span class="dot yellow"></span>
+                        <span class="dot green"></span>
+                    </div>
+                    <div class="browser-url">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        <span class="url-safe">https://your-bank.com</span>
+                    </div>
+                </div>
+                <div class="browser-body">
+                    <div class="scan-animation">
+                        <div class="scan-line"></div>
+                        <div class="scan-result safe">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#00e676" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                            <div>
+                                <strong>Website is Safe</strong>
+                                <span>Confidence: 98% · 0 threats detected</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Floating elements -->
+            <div class="floating-card card-1">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00e676" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span>Protected</span>
+            </div>
+            <div class="floating-card card-2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff5252" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span>Threat Blocked</span>
+            </div>
+            <div class="floating-card card-3">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#448aff" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <span>Email Scanned</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features">
+        <div class="section-container">
+            <div class="section-header">
+                <span class="section-tag">Features</span>
+                <h2>Everything You Need to<br><span class="gradient-text">Stay Protected</span></h2>
+                <p>Four powerful modules working together to keep you safe from phishing attacks.</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card" data-aos="fade-up">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #667eea22, #764ba222); border-color: #667eea44;">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#667eea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    </div>
+                    <h3>Real-Time URL Scanning</h3>
+                    <p>Every website you visit is instantly analyzed using 23 intelligent feature indicators to detect phishing attempts.</p>
+                </div>
+                <div class="feature-card" data-aos="fade-up" data-aos-delay="100">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #f093fb22, #f5576c22); border-color: #f5576c44;">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f5576c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                    </div>
+                    <h3>Email Phishing Detection</h3>
+                    <p>Scans Gmail and Outlook emails automatically, flagging suspicious messages with visual banners before you interact.</p>
+                </div>
+                <div class="feature-card" data-aos="fade-up" data-aos-delay="200">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #4facfe22, #00f2fe22); border-color: #4facfe44;">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4facfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </div>
+                    <h3>ML-Powered Detection</h3>
+                    <p>Advanced RandomForest classifier combined with a 14-signal heuristic engine for maximum accuracy and zero false negatives.</p>
+                </div>
+                <div class="feature-card" data-aos="fade-up" data-aos-delay="300">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #00e67622, #69f0ae22); border-color: #00e67644;">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00e676" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    </div>
+                    <h3>Instant Threat Alerts</h3>
+                    <p>Full-page warning overlays with risk levels, confidence scores, and actionable advice when threats are detected.</p>
+                </div>
+                <div class="feature-card" data-aos="fade-up" data-aos-delay="400">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #ffd74022, #ff930022); border-color: #ffd74044;">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ffd740" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    </div>
+                    <h3>Brand Impersonation Guard</h3>
+                    <p>Detects lookalike characters and brand spoofing attempts targeting PayPal, Amazon, Google, and 20+ major brands.</p>
+                </div>
+                <div class="feature-card" data-aos="fade-up" data-aos-delay="500">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #e040fb22, #aa00ff22); border-color: #e040fb44;">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e040fb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    </div>
+                    <h3>Dashboard & Analytics</h3>
+                    <p>Track your browsing security stats, view scan history, and monitor threat trends through a sleek popup dashboard.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How it Works Section -->
+    <section id="how-it-works">
+        <div class="section-container">
+            <div class="section-header">
+                <span class="section-tag">How It Works</span>
+                <h2>Protection in<br><span class="gradient-text">Four Simple Steps</span></h2>
+                <p>PhishGuard works silently in the background — zero configuration required.</p>
+            </div>
+            <div class="steps-container">
+                <div class="step" data-aos="fade-right">
+                    <div class="step-number">01</div>
+                    <div class="step-content">
+                        <h3>Install the Extension</h3>
+                        <p>Download the zip, unpack it, and load it into Chrome via Developer Mode. Takes less than 60 seconds.</p>
+                    </div>
+                    <div class="step-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    </div>
+                </div>
+                <div class="step-connector"></div>
+                <div class="step" data-aos="fade-left">
+                    <div class="step-number">02</div>
+                    <div class="step-content">
+                        <h3>Browse Normally</h3>
+                        <p>PhishGuard monitors every URL and email in the background. No action needed — it works automatically.</p>
+                    </div>
+                    <div class="step-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    </div>
+                </div>
+                <div class="step-connector"></div>
+                <div class="step" data-aos="fade-right">
+                    <div class="step-number">03</div>
+                    <div class="step-content">
+                        <h3>AI Analyzes Threats</h3>
+                        <p>Our ML engine extracts 23 features and runs them through a dual-strategy classifier in milliseconds.</p>
+                    </div>
+                    <div class="step-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    </div>
+                </div>
+                <div class="step-connector"></div>
+                <div class="step" data-aos="fade-left">
+                    <div class="step-number">04</div>
+                    <div class="step-content">
+                        <h3>Get Instant Alerts</h3>
+                        <p>If a threat is detected, you get an immediate visual warning with confidence scores and safety advice.</p>
+                    </div>
+                    <div class="step-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section id="stats">
+        <div class="section-container">
+            <div class="stats-grid">
+                <div class="stat-card" data-aos="zoom-in">
+                    <div class="stat-value" data-target="23">0</div>
+                    <div class="stat-label">Security Features Analyzed</div>
+                </div>
+                <div class="stat-card" data-aos="zoom-in" data-aos-delay="100">
+                    <div class="stat-value" data-target="98" data-suffix="%">0%</div>
+                    <div class="stat-label">Detection Accuracy</div>
+                </div>
+                <div class="stat-card" data-aos="zoom-in" data-aos-delay="200">
+                    <div class="stat-value" data-target="14">0</div>
+                    <div class="stat-label">Heuristic Security Signals</div>
+                </div>
+                <div class="stat-card" data-aos="zoom-in" data-aos-delay="300">
+                    <div class="stat-value" data-target="50" data-prefix="<" data-suffix="ms">0ms</div>
+                    <div class="stat-label">Average Scan Time</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Installation Guide Section -->
+    <section id="install">
+        <div class="section-container">
+            <div class="section-header">
+                <span class="section-tag">Installation</span>
+                <h2>Set Up in<br><span class="gradient-text">Under a Minute</span></h2>
+                <p>Follow these simple steps to get PhishGuard running in your browser.</p>
+            </div>
+            <div class="install-steps">
+                <div class="install-card" data-aos="fade-up">
+                    <div class="install-step-num">1</div>
+                    <div class="install-icon">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="url(#grad1)" stroke-width="1.5">
+                            <defs><linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#667eea"/><stop offset="100%" stop-color="#764ba2"/></linearGradient></defs>
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                    </div>
+                    <h3>Download & Unzip</h3>
+                    <p>Click the download button to get the extension zip file. Extract its contents to any folder on your computer.</p>
+                </div>
+                <div class="install-card" data-aos="fade-up" data-aos-delay="150">
+                    <div class="install-step-num">2</div>
+                    <div class="install-icon">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="url(#grad2)" stroke-width="1.5">
+                            <defs><linearGradient id="grad2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#f093fb"/><stop offset="100%" stop-color="#f5576c"/></linearGradient></defs>
+                            <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                        </svg>
+                    </div>
+                    <h3>Open Chrome Extensions</h3>
+                    <p>Navigate to <code>chrome://extensions/</code> in your Chrome browser and enable <strong>Developer Mode</strong> using the toggle.</p>
+                </div>
+                <div class="install-card" data-aos="fade-up" data-aos-delay="300">
+                    <div class="install-step-num">3</div>
+                    <div class="install-icon">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="url(#grad3)" stroke-width="1.5">
+                            <defs><linearGradient id="grad3" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#4facfe"/><stop offset="100%" stop-color="#00f2fe"/></linearGradient></defs>
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                        </svg>
+                    </div>
+                    <h3>Load & Activate</h3>
+                    <p>Click <strong>"Load unpacked"</strong>, select the extracted folder, and PhishGuard will appear in your Chrome toolbar — ready to protect.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Download CTA Section -->
+    <section id="download">
+        <div class="section-container">
+            <div class="download-card">
+                <div class="download-glow"></div>
+                <div class="download-content">
+                    <img src="icon128.png" alt="PhishGuard" class="download-logo">
+                    <h2>Ready to Protect<br>Your Browsing?</h2>
+                    <p>Download PhishGuard now and start browsing with confidence. Free, open-source, and privacy-respecting.</p>
+                    <a href="phishguard-extension.zip" download class="btn btn-primary btn-large" id="main-download-btn">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Download PhishGuard v2.0
+                    </a>
+                    <div class="download-meta">
+                        <span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            Chrome Extension
+                        </span>
+                        <span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                            Manifest V3
+                        </span>
+                        <span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                            Open Source
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-container">
+            <div class="footer-top">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <img src="icon128.png" alt="PhishGuard" class="nav-icon">
+                        <span>PhishGuard</span>
+                    </div>
+                    <p>AI-powered anti-phishing protection for the modern web. Built with machine learning and a passion for security.</p>
+                </div>
+                <div class="footer-links-group">
+                    <div class="footer-links">
+                        <h4>Product</h4>
+                        <a href="#features">Features</a>
+                        <a href="#how-it-works">How It Works</a>
+                        <a href="#install">Installation</a>
+                        <a href="#download">Download</a>
+                    </div>
+                    <div class="footer-links">
+                        <h4>Technology</h4>
+                        <a href="#">ML Engine</a>
+                        <a href="#">Feature Extraction</a>
+                        <a href="#">Heuristic Analysis</a>
+                        <a href="#">API Documentation</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 PhishGuard. MIT License — Free for academic and personal use.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
