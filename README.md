@@ -2,6 +2,8 @@
 
 A complete **4-module** phishing detection system: Chrome Extension + Flask API + ML Classifier + Real-time Alerts.
 
+🌐 **Live Final Website & Download:** [https://phishguard26.netlify.app/](https://phishguard26.netlify.app/)
+
 ---
 
 ## 📁 Project Structure
