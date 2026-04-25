@@ -22,7 +22,7 @@ if RAW_SUPABASE_URL:
         password = RAW_SUPABASE_URL
         SUPABASE_URL = (
             f"postgresql://postgres.{PROJECT_REF}:{password}"
-            f"@{POOLER_HOST}:{POOLER_PORT}/postgres"
+            f"@{POOLER_HOST}:{POOLER_PORT}/postgres?sslmode=require"
         )
         logger.info("Auto-built Supabase pooler URL from bare password.")
 
@@ -33,7 +33,7 @@ if RAW_SUPABASE_URL:
             password = match.group(1)
             SUPABASE_URL = (
                 f"postgresql://postgres.{PROJECT_REF}:{password}"
-                f"@{POOLER_HOST}:{POOLER_PORT}/postgres"
+                f"@{POOLER_HOST}:{POOLER_PORT}/postgres?sslmode=require"
             )
             logger.info("Auto-corrected IPv6 direct URL → IPv4 pooler URL.")
         else:
@@ -46,7 +46,7 @@ if RAW_SUPABASE_URL:
             password = match.group(1)
             SUPABASE_URL = (
                 f"postgresql://postgres.{PROJECT_REF}:{password}"
-                f"@{POOLER_HOST}:{POOLER_PORT}/postgres"
+                f"@{POOLER_HOST}:{POOLER_PORT}/postgres?sslmode=require"
             )
             logger.info("Auto-corrected pooler URL to include tenant identifier.")
         else:
@@ -55,6 +55,10 @@ if RAW_SUPABASE_URL:
     # Scenario 4: URL looks correct already
     else:
         SUPABASE_URL = RAW_SUPABASE_URL
+        # Ensure SSL is enabled for pooler connections
+        if "pooler.supabase.com" in SUPABASE_URL and "sslmode" not in SUPABASE_URL:
+            separator = "&" if "?" in SUPABASE_URL else "?"
+            SUPABASE_URL += f"{separator}sslmode=require"
         logger.info("Using SUPABASE_URL as provided.")
 
 # ─── Select Database Engine ──────────────────────────────────────────

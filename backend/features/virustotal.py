@@ -15,7 +15,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 # API key from environment variable (set in Render dashboard)
-VT_API_KEY = os.environ.get("VT_API_KEY", "")
+VT_API_KEY = os.environ.get("VT_API_KEY", "").strip()
 VT_BASE = "https://www.virustotal.com/api/v3"
 
 # Cache results to avoid hitting rate limits (4 req/min on free tier)
