@@ -29,11 +29,12 @@ if RAW_SUPABASE_URL:
             password = match.group(1)
 
     if password:
-        # Use direct connection parameters (bypasses pooler issues)
-        direct_host = f"db.{PROJECT_REF}.supabase.co"
+        # Use Supabase Supavisor pooler (session mode, port 5432)
+        pooler_host = f"aws-0-ap-northeast-2.pooler.supabase.com"
+        pooler_user = f"postgres.{PROJECT_REF}"
         DB_PARAMS = {
             "port": 5432,
-            "user": "postgres",
+            "user": pooler_user,
             "password": password,
             "dbname": "postgres",
             "sslmode": "require",
@@ -43,18 +44,20 @@ if RAW_SUPABASE_URL:
         # Force IPv4 resolution (Render free tier doesn't support IPv6)
         try:
             ipv4 = socket.getaddrinfo(
-                direct_host, 5432,
+                pooler_host, 5432,
                 socket.AF_INET, socket.SOCK_STREAM
             )
             if ipv4:
                 DB_PARAMS["host"] = ipv4[0][4][0]  # Use resolved IPv4 address
-                logger.info(f"Resolved Supabase to IPv4: {DB_PARAMS['host']}")
+                # Must set options to pass the SNI hostname for SSL
+                DB_PARAMS["options"] = f"-c search_path=public"
+                logger.info(f"Resolved Supabase pooler to IPv4: {DB_PARAMS['host']}")
             else:
-                DB_PARAMS["host"] = direct_host
-                logger.warning("No IPv4 found, using hostname directly.")
+                DB_PARAMS["host"] = pooler_host
+                logger.warning("No IPv4 found, using pooler hostname directly.")
         except Exception as e:
-            DB_PARAMS["host"] = direct_host
-            logger.warning(f"IPv4 resolution failed: {e}. Using hostname.")
+            DB_PARAMS["host"] = pooler_host
+            logger.warning(f"IPv4 resolution failed: {e}. Using pooler hostname.")
 
 # ─── Select Database Engine ──────────────────────────────────────────
 USE_POSTGRES = False
