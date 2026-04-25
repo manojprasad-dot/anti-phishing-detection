@@ -338,6 +338,8 @@ def health_check():
         "service": "PhishGuard API v2.0",
         "url_model": detector.get_model_info(),
         "email_model": email_detector.get_model_info(),
+        "database": "PostgreSQL (Supabase)" if database.USE_POSTGRES else "SQLite (local fallback)",
+        "virustotal": "connected" if os.environ.get("VT_API_KEY", "").strip() else "not configured",
         "timestamp": datetime.datetime.utcnow().isoformat()
     })
 
