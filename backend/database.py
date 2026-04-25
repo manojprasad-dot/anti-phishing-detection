@@ -4,7 +4,29 @@ import logging
 from threading import Lock
 
 # Determine which database engine to use
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
+RAW_SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_URL = None
+
+if RAW_SUPABASE_URL:
+    RAW_SUPABASE_URL = RAW_SUPABASE_URL.strip()
+    # Scenario 1: User pasted only the password
+    if not RAW_SUPABASE_URL.startswith("postgres"):
+        SUPABASE_URL = f"postgresql://postgres:{RAW_SUPABASE_URL}@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres"
+    
+    # Scenario 2: User pasted the IPv6 direct connection (which fails on Render Free Tier)
+    elif "@db." in RAW_SUPABASE_URL:
+        import re
+        match = re.search(r'postgres:(.*?)@', RAW_SUPABASE_URL)
+        if match:
+            password = match.group(1)
+            SUPABASE_URL = f"postgresql://postgres:{password}@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres"
+        else:
+            SUPABASE_URL = RAW_SUPABASE_URL
+            
+    # Scenario 3: User pasted the correct pooler URL
+    else:
+        SUPABASE_URL = RAW_SUPABASE_URL
+
 if SUPABASE_URL:
     try:
         import psycopg2
