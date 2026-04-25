@@ -1,51 +1,77 @@
 import os
+import re
 import datetime
 import logging
+import sqlite3
 from threading import Lock
 
-# Determine which database engine to use
-RAW_SUPABASE_URL = os.environ.get("SUPABASE_URL")
+logger = logging.getLogger(__name__)
+
+# ─── Supabase Project Config ─────────────────────────────────────────
+PROJECT_REF = "zvlzjpwejnoyrgizrapy"
+POOLER_HOST = f"aws-0-ap-northeast-2.pooler.supabase.com"
+POOLER_PORT = 6543
+
+# ─── Auto-correct SUPABASE_URL ───────────────────────────────────────
+RAW_SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
 SUPABASE_URL = None
 
 if RAW_SUPABASE_URL:
-    RAW_SUPABASE_URL = RAW_SUPABASE_URL.strip()
-    # Scenario 1: User pasted only the password
+    # Scenario 1: User pasted only the password (no "postgresql://" prefix)
     if not RAW_SUPABASE_URL.startswith("postgres"):
-        SUPABASE_URL = f"postgresql://postgres:{RAW_SUPABASE_URL}@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres"
-    
-    # Scenario 2: User pasted the IPv6 direct connection (which fails on Render Free Tier)
+        password = RAW_SUPABASE_URL
+        SUPABASE_URL = (
+            f"postgresql://postgres.{PROJECT_REF}:{password}"
+            f"@{POOLER_HOST}:{POOLER_PORT}/postgres"
+        )
+        logger.info("Auto-built Supabase pooler URL from bare password.")
+
+    # Scenario 2: User pasted the IPv6 direct connection (db.xxx.supabase.co:5432)
     elif "@db." in RAW_SUPABASE_URL:
-        import re
-        match = re.search(r'postgres:(.*?)@', RAW_SUPABASE_URL)
+        match = re.search(r'postgres(?:ql)?://postgres:(.*?)@', RAW_SUPABASE_URL)
         if match:
             password = match.group(1)
-            SUPABASE_URL = f"postgresql://postgres:{password}@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres"
+            SUPABASE_URL = (
+                f"postgresql://postgres.{PROJECT_REF}:{password}"
+                f"@{POOLER_HOST}:{POOLER_PORT}/postgres"
+            )
+            logger.info("Auto-corrected IPv6 direct URL → IPv4 pooler URL.")
         else:
             SUPABASE_URL = RAW_SUPABASE_URL
-            
-    # Scenario 3: User pasted the correct pooler URL
+
+    # Scenario 3: User pasted a pooler URL but without the project ref in username
+    elif "pooler.supabase.com" in RAW_SUPABASE_URL and f"postgres.{PROJECT_REF}" not in RAW_SUPABASE_URL:
+        match = re.search(r'postgres(?:ql)?://postgres:(.*?)@', RAW_SUPABASE_URL)
+        if match:
+            password = match.group(1)
+            SUPABASE_URL = (
+                f"postgresql://postgres.{PROJECT_REF}:{password}"
+                f"@{POOLER_HOST}:{POOLER_PORT}/postgres"
+            )
+            logger.info("Auto-corrected pooler URL to include tenant identifier.")
+        else:
+            SUPABASE_URL = RAW_SUPABASE_URL
+
+    # Scenario 4: URL looks correct already
     else:
         SUPABASE_URL = RAW_SUPABASE_URL
+        logger.info("Using SUPABASE_URL as provided.")
 
+# ─── Select Database Engine ──────────────────────────────────────────
+USE_POSTGRES = False
 if SUPABASE_URL:
     try:
         import psycopg2
         from psycopg2.extras import DictCursor
         USE_POSTGRES = True
-        logger = logging.getLogger(__name__)
-        logger.info("Using Supabase PostgreSQL database.")
+        logger.info("PostgreSQL engine ready (psycopg2 loaded).")
     except ImportError:
-        logger = logging.getLogger(__name__)
-        logger.warning("SUPABASE_URL provided but psycopg2 is not installed. Falling back to SQLite.")
-        USE_POSTGRES = False
-        import sqlite3
-else:
-    import sqlite3
-    USE_POSTGRES = False
+        logger.warning("psycopg2 not installed. Falling back to SQLite.")
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.dirname(__file__))
 DB_PATH = os.path.join(DATA_DIR, 'phishguard.db')
 db_lock = Lock()
+
 
 def get_db():
     if USE_POSTGRES:
@@ -58,40 +84,42 @@ def get_db():
         conn.row_factory = sqlite3.Row
         return conn
 
+
 def execute_query(query, params=(), fetchall=False, fetchone=False, commit=False):
     """Abstraction layer to handle SQLite '?' vs PostgreSQL '%s' and execution."""
     if USE_POSTGRES:
         query = query.replace('?', '%s')
-    
+
     # We use a lock only for SQLite to prevent concurrent write issues on local files
     if not USE_POSTGRES:
         db_lock.acquire()
-        
+
     try:
         conn = get_db()
         if USE_POSTGRES:
             cursor = conn.cursor(cursor_factory=DictCursor)
         else:
             cursor = conn.cursor()
-            
+
         cursor.execute(query, params)
-        
+
         result = None
         if fetchall:
             result = [dict(row) for row in cursor.fetchall()]
         elif fetchone:
             row = cursor.fetchone()
             result = dict(row) if row else None
-            
+
         if commit:
             conn.commit()
-            
+
         cursor.close()
         conn.close()
         return result
     finally:
         if not USE_POSTGRES:
             db_lock.release()
+
 
 def init_db():
     # We define table schemas compatible with both SQLite and Postgres
@@ -105,7 +133,7 @@ def init_db():
             risk_level TEXT,
             timestamp TEXT
         )
-        '''.replace('SERIAL', 'INTEGER PRIMARY KEY AUTOINCREMENT') if not USE_POSTGRES else 
+        '''.replace('SERIAL', 'INTEGER PRIMARY KEY AUTOINCREMENT') if not USE_POSTGRES else
         '''
         CREATE TABLE IF NOT EXISTS requests (
             id SERIAL PRIMARY KEY,
@@ -159,7 +187,7 @@ def init_db():
         )
         '''
     ]
-    
+
     for query in queries:
         execute_query(query, commit=True)
 
@@ -171,6 +199,7 @@ def init_db():
             ("PG-API-KEY-2026", "Default Built-In", datetime.datetime.utcnow().isoformat()),
             commit=True
         )
+
 
 # Helper Functions
 def log_request(url, result, confidence, risk_level, timestamp):
@@ -186,12 +215,12 @@ def get_recent_requests(limit=500):
 def get_analytics():
     total = execute_query('SELECT COUNT(*) as count FROM requests', fetchone=True)['count']
     threats = execute_query('SELECT COUNT(*) as count FROM requests WHERE result=?', ('phishing',), fetchone=True)['count']
-    
+
     risk_rows = execute_query('SELECT risk_level, COUNT(*) as count FROM requests GROUP BY risk_level', fetchall=True)
     risk_dist = {row['risk_level']: row['count'] for row in risk_rows}
-    
+
     recent_threats = execute_query('SELECT * FROM requests WHERE result=? ORDER BY id DESC LIMIT 10', ('phishing',), fetchall=True)
-    
+
     return {
         "total_analyzed": total,
         "threats_detected": threats,
@@ -222,7 +251,7 @@ def log_feedback(url, verdict, timestamp):
 # Admin Helpers
 def create_api_key(key_id, company_name, created_at):
     execute_query(
-        "INSERT INTO api_keys (key_id, company_name, created_at) VALUES (?, ?, ?)", 
+        "INSERT INTO api_keys (key_id, company_name, created_at) VALUES (?, ?, ?)",
         (key_id, company_name, created_at),
         commit=True
     )
@@ -233,5 +262,20 @@ def get_all_api_keys():
 def get_all_feedback():
     return execute_query("SELECT * FROM feedback", fetchall=True)
 
-# Initialize on import
-init_db()
+# ─── Initialize on import (with graceful fallback) ───────────────────
+try:
+    init_db()
+    logger.info(f"Database initialized successfully. PostgreSQL={USE_POSTGRES}")
+except Exception as e:
+    if USE_POSTGRES:
+        logger.error(f"PostgreSQL connection failed: {e}")
+        logger.warning("Falling back to SQLite...")
+        USE_POSTGRES = False
+        SUPABASE_URL = None
+        try:
+            init_db()
+            logger.info("SQLite fallback initialized successfully.")
+        except Exception as e2:
+            logger.error(f"SQLite fallback also failed: {e2}")
+    else:
+        logger.error(f"SQLite init failed: {e}")
