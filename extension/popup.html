@@ -194,7 +194,7 @@
   <!-- Actions -->
   <div class="actbar">
     <button class="btn-sm" id="btn-clear">Clear History</button>
-    <div class="ver">PhishGuard v1.1</div>
+    <div class="ver"><a href="https://phishguard26.netlify.app/" target="_blank" style="color:#666;text-decoration:none;">Website (v2.0)</a></div>
   </div>
 
   <!-- Report Modal (hidden) -->
@@ -215,6 +215,18 @@
         <button class="modal-cancel" id="report-cancel">Cancel</button>
         <button class="modal-submit" id="report-submit">Submit Report</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Forced Update Overlay -->
+  <div class="modal-bg" id="update-modal" style="display:none; z-index:1000; background:var(--bg)">
+    <div class="modal" style="text-align:center; padding:30px 20px;">
+      <div style="font-size:40px; margin-bottom:15px;">🚀</div>
+      <h3 style="color:var(--red); font-size:18px; margin-bottom:8px">Update Required</h3>
+      <p style="color:var(--m); font-size:13px; margin-bottom:20px; line-height:1.5;">
+        A critical new version of PhishGuard is available. You must install the latest update to continue scanning securely.
+      </p>
+      <a id="update-btn" href="#" target="_blank" style="display:block; padding:10px; background:var(--blu); color:#fff; border-radius:8px; text-decoration:none; font-weight:600;">Download Update</a>
     </div>
   </div>
 

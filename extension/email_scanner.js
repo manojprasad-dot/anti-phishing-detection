@@ -227,7 +227,10 @@ scanBtn.addEventListener("click", async () => {
   try {
     const response = await fetch(CHECK_EMAIL_ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "X-API-Key": "PG-API-KEY-2026"
+      },
       body: JSON.stringify({
         email_text: emailText,
         sender: senderEl.value.trim(),

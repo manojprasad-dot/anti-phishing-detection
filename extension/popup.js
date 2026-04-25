@@ -1,4 +1,12 @@
 document.addEventListener("DOMContentLoaded", async () => {
+  // Check if update is required
+  const { update_required, update_info } = await chrome.storage.local.get(["update_required", "update_info"]);
+  if (update_required && update_info) {
+    document.getElementById("update-modal").style.display = "flex";
+    document.getElementById("update-btn").href = update_info.download_url;
+    return; // Block loading rest of the UI
+  }
+
   await loadTab();
   await loadStats();
   await loadAlerts();

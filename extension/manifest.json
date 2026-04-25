@@ -8,9 +8,13 @@
     "activeTab",
     "storage",
     "notifications",
-    "webNavigation"
+    "webNavigation",
+    "alarms"
   ],
   "host_permissions": ["<all_urls>"],
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; connect-src 'self' https://phishguard-api-6dmc.onrender.com; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;"
+  },
   "background": {
     "service_worker": "background.js"
   },

@@ -15,11 +15,55 @@ let stats = { totalScanned: 0, phishingDetected: 0, safeDetected: 0, errors: 0 }
 // Pages already scanned in this session (avoid double-scanning)
 const scannedTabs = new Map();
 
-// ── Extension installed ────────────────────────────────────────
+// ── Extension installed & Keep-Alive ───────────────────────────
 chrome.runtime.onInstalled.addListener(() => {
   console.log("[PhishGuard] Extension installed and activated.");
   chrome.storage.local.set({ stats, alerts: [], feedbackLog: [] });
+  
+  // Set up keep-alive ping to prevent Render cold starts
+  chrome.alarms.create("keepAlive", { periodInMinutes: 10 });
+  
+  // Check for updates
+  checkForUpdates();
 });
+
+// Keep-alive alarm listener
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "keepAlive") {
+    fetch(`${API_BASE}/health`).catch(() => {});
+    checkForUpdates();
+  }
+});
+
+// ── Forced Update Checker ──────────────────────────────────────
+async function checkForUpdates() {
+  try {
+    const res = await fetch(`${API_BASE}/api/version`);
+    if (!res.ok) return;
+    
+    const data = await res.json();
+    const currentVersion = chrome.runtime.getManifest().version;
+    
+    // Simple version comparison (e.g., "2.0.0" vs "2.1.0")
+    // If backend version is higher, force update
+    if (data.latest_version && data.latest_version > currentVersion) {
+      console.warn(`[PhishGuard] Update required! Current: ${currentVersion}, Latest: ${data.latest_version}`);
+      
+      chrome.storage.local.set({ 
+        update_required: true,
+        update_info: data
+      });
+      
+      // Update badge to alert user
+      chrome.action.setBadgeText({ text: "UPDATE" });
+      chrome.action.setBadgeBackgroundColor({ color: "#FF3B30" });
+    } else {
+      chrome.storage.local.set({ update_required: false });
+    }
+  } catch (err) {
+    console.warn("[PhishGuard] Could not check for updates:", err);
+  }
+}
 
 // ── Automatic website scanning: chrome.tabs.onUpdated ──────────
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
@@ -60,7 +104,8 @@ async function sendForAnalysis(url, tabId) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Extension-ID": chrome.runtime.id
+          "X-Extension-ID": chrome.runtime.id,
+          "X-API-Key": "PG-API-KEY-2026"
         },
         body: JSON.stringify({ url }),
         signal: controller.signal
@@ -248,7 +293,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     // Send report to backend (fire and forget)
     fetch(`${API_BASE}/report`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "X-API-Key": "PG-API-KEY-2026"
+      },
       body: JSON.stringify(report)
     }).catch(() => {});
 

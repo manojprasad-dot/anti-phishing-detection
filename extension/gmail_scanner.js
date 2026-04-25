@@ -157,6 +157,7 @@ async function scanEmail(bodyText, bodyHtml, sender, subject, containerEl) {
       headers: {
         "Content-Type": "application/json",
         "X-Extension-ID": chrome.runtime.id,
+        "X-API-Key": "PG-API-KEY-2026",
       },
       body: JSON.stringify({
         email_text: bodyHtml || bodyText,  // Prefer HTML for link analysis

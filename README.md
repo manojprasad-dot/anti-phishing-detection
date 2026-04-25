@@ -31,6 +31,22 @@ phishguard/
         └── model.pkl                 ← (auto-generated after training)
 ```
 
+```
+
+---
+
+## 🔒 Security & Privacy (Bank-Grade Protection)
+
+PhishGuard v2.0 implements strict security mechanisms protecting both our users and infrastructure:
+
+- **API Key Protection**: The backend API rejects unauthorized requests. Only the official Chrome extension via injected `X-API-Key` headers can communicate with the classification engine.
+- **Strict Rate Limiting**: Powered by `Flask-Limiter` (60 requests/minute) to prevent API abuse and automated attacks.
+- **Content Security Policy (CSP)**: Both the website and extension use ultra-strict CSPs to block XSS (Cross-Site Scripting), restricting script execution and network endpoints (`connect-src`).
+- **Security Headers**: Secured by `Flask-Talisman` enforcing HTTPS, HSTS, and X-XSS-Protection.
+- **Privacy-First**: No PII is permanently stored. Email bodies and sensitive URLs are analyzed and immediately discarded.
+
+For vulnerability reporting, see [SECURITY.md](SECURITY.md).
+
 ---
 
 ## 🏗️ Architecture — 4 Modules

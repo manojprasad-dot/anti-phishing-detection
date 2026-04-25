@@ -1,11 +1,27 @@
-"""Quick test for /check_email endpoint."""
-import requests, json
+"""
+PhishGuard — Email Detection Test Suite (v2.0)
+Tests the enhanced /check_email endpoint with calibrated risk scoring.
+
+Usage:
+    1. Start backend: python app.py
+    2. Run tests:     python test_email.py
+"""
+import sys
+import io
+import requests
+import json
+
+# Fix Windows console encoding
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 BASE = "http://localhost:5000/check_email"
 
 tests = [
     {
         "name": "PHISHING — PayPal Scam",
+        "expected": "phishing",
         "data": {
             "sender": "security@paypal-verification.xyz",
             "subject": "Urgent: Your account has been suspended",
@@ -23,6 +39,7 @@ tests = [
     },
     {
         "name": "PHISHING — Lottery Prize Scam",
+        "expected": "phishing",
         "data": {
             "sender": "winner@lottery-prize.buzz",
             "subject": "CONGRATULATIONS! You Won $1,000,000!!!",
@@ -39,6 +56,7 @@ tests = [
     },
     {
         "name": "PHISHING — Fake Microsoft Alert",
+        "expected": "phishing",
         "data": {
             "sender": "admin@microsoft-security.top",
             "subject": "Security Alert: Unusual sign-in activity",
@@ -54,6 +72,7 @@ tests = [
     },
     {
         "name": "SAFE — GitHub Notification",
+        "expected": "safe",
         "data": {
             "sender": "noreply@github.com",
             "subject": "New login to your GitHub account",
@@ -70,6 +89,7 @@ tests = [
     },
     {
         "name": "SAFE — Slack Weekly Digest",
+        "expected": "safe",
         "data": {
             "sender": "notifications@slack.com",
             "subject": "Weekly digest from Engineering workspace",
@@ -83,34 +103,121 @@ tests = [
             ),
         },
     },
+    {
+        "name": "PHISHING — Credential Harvesting Form",
+        "expected": "phishing",
+        "data": {
+            "sender": "billing@disney-plus.work",
+            "subject": "Disney+ Payment Issue: Update Required",
+            "email_text": (
+                "Dear Subscriber,\n\n"
+                "We couldn't process your Disney+ subscription payment.\n\n"
+                "<form action='http://disneyplus-billing.work/pay'>"
+                "<input type='text' placeholder='Card Number'>"
+                "<input type='password' placeholder='CVV'></form>\n\n"
+                "Action required within 24 hours.\n\n"
+                "Disney+ Billing"
+            ),
+        },
+    },
+    {
+        "name": "SAFE — Netflix Receipt",
+        "expected": "safe",
+        "data": {
+            "sender": "billing@netflix.com",
+            "subject": "Your Netflix receipt",
+            "email_text": (
+                "Hi David,\n\n"
+                "Thank you for your payment.\n\n"
+                "Plan: Standard\n"
+                "Amount: $15.49\n"
+                "Next billing date: May 21, 2026\n\n"
+                "Manage your subscription: https://www.netflix.com/YourAccount\n\n"
+                "Netflix"
+            ),
+        },
+    },
 ]
 
-print("\n" + "=" * 60)
-print("  PhishGuard — Email Detection Test Suite")
-print("=" * 60)
+print("\n" + "=" * 65)
+print("  PhishGuard — Email Detection Test Suite v2.0")
+print("  XGBoost + 32 Features + Calibrated Risk Scoring")
+print("=" * 65)
 
 passed = 0
+correct = 0
+total = len(tests)
+
 for t in tests:
     try:
-        r = requests.post(BASE, json=t["data"], timeout=15)
+        r = requests.post(
+            BASE, 
+            json=t["data"], 
+            headers={"x-api-key": "PG-API-KEY-2026"},
+            timeout=15
+        )
         result = r.json()
-        emoji = "🔴" if result["result"] == "phishing" else "🟢"
-        conf = round(result["confidence"] * 100)
 
-        print(f"\n{emoji}  {t['name']}")
-        print(f"   Result:     {result['result'].upper()}")
-        print(f"   Confidence: {conf}%")
-        print(f"   Risk Level: {result['risk_level']}")
-        if result.get("reasons"):
+        risk_score = result.get("risk_score", 0)
+        result_label = result.get("result", "unknown")
+        confidence = round(result.get("confidence", 0) * 100)
+        risk_level = result.get("risk_level", "?")
+
+        # Determine icon
+        if result_label == "phishing":
+            emoji = "🔴"
+        elif result_label == "suspicious":
+            emoji = "⚠️ "
+        else:
+            emoji = "🟢"
+
+        # Check if correct
+        is_correct = result_label == t["expected"]
+        # Also accept "suspicious" for expected phishing (conservative is OK)
+        if t["expected"] == "phishing" and result_label == "suspicious":
+            is_correct = True  # acceptable
+        if is_correct:
+            correct += 1
+
+        check = "✅" if is_correct else "❌"
+
+        print(f"\n{emoji}  {t['name']}  {check}")
+        print(f"   Result:     {result_label.upper()}")
+        print(f"   Risk Score: {risk_score}%")
+        print(f"   Risk Level: {risk_level}")
+        print(f"   Confidence: {confidence}%")
+
+        # Show auth details
+        details = result.get("details", {})
+        auth = details.get("sender_analysis", {})
+        if auth:
+            spf = auth.get("spf", "?").upper()
+            dkim = auth.get("dkim", "?").upper()
+            dmarc = auth.get("dmarc", "?").upper()
+            print(f"   Auth:       SPF={spf} | DKIM={dkim} | DMARC={dmarc}")
+
+        # Show rule triggers
+        triggers = details.get("rule_triggers", [])
+        if triggers:
+            print(f"   Rules:      {', '.join(triggers)}")
+
+        # Show reasons
+        reasons = result.get("reasons", [])
+        if reasons:
             print(f"   Reasons:")
-            for r in result["reasons"][:3]:
-                print(f"     • {r}")
-        if result.get("links_analyzed"):
-            print(f"   Links:      {result['links_analyzed']} analyzed (avg score: {round((result.get('avg_link_score') or 0)*100)}%)")
+            for reason in reasons[:4]:
+                print(f"     • {reason}")
+
+        # Show link analysis
+        links = details.get("links_analyzed", result.get("links_analyzed", 0))
+        flagged = details.get("links_flagged", 0)
+        if links:
+            print(f"   Links:      {links} analyzed, {flagged} flagged")
+
         passed += 1
     except Exception as e:
         print(f"\n❌  {t['name']} — FAILED: {e}")
 
-print(f"\n{'=' * 60}")
-print(f"  Results: {passed}/{len(tests)} tests passed")
-print(f"{'=' * 60}\n")
+print(f"\n{'=' * 65}")
+print(f"  Results: {passed}/{total} tests completed, {correct}/{total} correct")
+print(f"{'=' * 65}\n")

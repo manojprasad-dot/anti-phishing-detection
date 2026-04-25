@@ -27,8 +27,11 @@ import datetime
 # Allow imports from sibling packages
 sys.path.insert(0, os.path.dirname(__file__))
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_talisman import Talisman
 
 from features.extractor import extract_features
 from features.email_extractor import extract_email_features, email_feature_names
@@ -38,12 +41,54 @@ except Exception:
     def vt_scan(url):
         return {"vt_available": False, "vt_malicious": 0, "vt_suspicious": 0,
                 "vt_harmless": 0, "vt_total": 0, "vt_is_phishing": False, "vt_confidence": 0.0}
+from dotenv import load_dotenv
+load_dotenv()
+
 from ml.detector import detector
 from ml.email_detector import email_detector
+from security import secure_endpoint, log_attack
 
 # -- [01] App setup -- Flask server initialized --------------------------------
 app = Flask(__name__)
-CORS(app)  # Enable CORS for cross-origin requests from extension
+
+# -- Detailed Origin Enforcement via Environment (CORS) --
+mode = os.environ.get("MODE", "development")
+if mode == "production":
+    ext_id = os.environ.get("EXTENSION_ID", "")
+    netlify = os.environ.get("NETLIFY_SITE", "")
+    origins = []
+    if ext_id and ext_id != "your_extension_id_here":
+        origins.append(f"chrome-extension://{ext_id}")
+    if netlify and netlify != "your_netlify_site_here":
+        origins.append(netlify)
+    CORS(app, resources={r"/*": {"origins": origins}})
+else:
+    CORS(app)  # Dev allows more origins, but still filtered by security.py regex
+
+# -- Security Headers --
+csp = {
+    'default-src': '\'self\'',
+}
+Talisman(app, content_security_policy=csp, force_https=(mode == "production"))
+
+# -- Rate Limiting --
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
+
+# -- IDS Attack Logger Hooks --
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    log_attack("rate_limit_violation", str(e.description))
+    return jsonify(error="Rate limit exceeded. Intrusion logged."), 429
+
+@app.errorhandler(405)
+def method_not_allowed_handler(e):
+    log_attack("invalid_method", "Attempted scanning/probing via invalid HTTP method")
+    return jsonify(error="Method not allowed"), 405
 
 logging.basicConfig(
     level=logging.INFO,
@@ -61,26 +106,37 @@ def index():
     return jsonify({
         "status": "online",
         "service": "PhishGuard API",
-        "endpoints": ["/check_url", "/check_email", "/health"]
+        "endpoints": ["/check_url", "/check_email", "/health", "/api/version"]
     })
 
 
 
+# -- [NEW] Forced Update Endpoint ---------------------------------------------
+@app.route("/api/version", methods=["GET", "POST"])
+def get_version():
+    """Returns the latest required extension version and download URL."""
+    netlify_url = os.environ.get("NETLIFY_SITE", "https://phishguard.netlify.app")
+    if netlify_url == "your_netlify_site_here":
+        netlify_url = "https://phishguard.netlify.app"
+        
+    return jsonify({
+        "latest_version": "2.0.0",  # Change this to force an update!
+        "force_update": True,
+        "download_url": f"{netlify_url}"
+    })
+
+
 # -- [02] Main endpoint: /check_url -------------------------------------------
 @app.route("/check_url", methods=["POST"])
+@secure_endpoint
+@limiter.limit("60 per minute")
 def check_url():
     """
     Main phishing analysis endpoint.
     
     Receives:  { "url": "https://example.com" }
     Returns:   { "result": "safe" or "phishing", "confidence": 0.95 }
-    
-    [03] Browser extension sends URL analysis request.
-    [04] API receives and validates request.
-    [05-09] Feature extraction -> ML prediction -> response.
-    [10] API sends classification response back to extension.
     """
-    # [04] Validate incoming request
     data = request.get_json(silent=True)
     if not data or "url" not in data:
         return jsonify({"error": "Missing 'url' field"}), 400
@@ -134,14 +190,14 @@ def check_url():
     return jsonify(response), 200
 
 
-# -- [MODULE 5] Email phishing endpoint ----------------------------------------
+# -- [MODULE 5] Email phishing endpoint (v2.0 — XGBoost + Calibrated Scoring) --
 @app.route("/check_email", methods=["POST"])
+@secure_endpoint
+@limiter.limit("60 per minute")
 def check_email():
     """
-    Email phishing analysis endpoint.
-
+    Email phishing analysis endpoint (v2.0).
     Receives:  { "email_text": "...", "sender": "...", "subject": "..." }
-    Returns:   { "result": "safe" | "phishing", "confidence": 0.89, "reasons": [...] }
     """
     data = request.get_json(silent=True)
     if not data or "email_text" not in data:
@@ -157,42 +213,66 @@ def check_email():
 
     logger.info(f"[check_email] Analyzing email — sender={sender[:40]}, subject={subject[:40]}")
 
-    # Extract email features
+    # [1] Extract 32 email features
     features = extract_email_features(email_text, sender, subject)
 
-    # Cross-check links in email body with URL phishing model
+    # [2] Cross-check links in email body with URL phishing model
     import re as _re
     urls_in_email = _re.findall(r'https?://[^\s<>"\'\)\]]+', email_text)
     url_scores = []
+    links_flagged = 0
     for url in urls_in_email[:5]:  # limit to 5 URLs
         try:
             url_features = extract_features(url)
             url_result = detector.predict(url_features)
             url_scores.append(url_result["confidence"])
+            if url_result["is_phishing"]:
+                links_flagged += 1
         except Exception:
             pass
 
+    # Inject URL model results into feature vector
     if url_scores:
         features["url_phishing_score"] = round(sum(url_scores) / len(url_scores), 4)
+        features["any_link_phishing"] = int(links_flagged > 0)
 
-    # Run email ML + heuristic detection
+    # [3] Pass sender domain for whitelist checking
+    sender_domain = ""
+    domain_match = _re.search(r'@([\w.-]+)', sender)
+    if domain_match:
+        sender_domain = domain_match.group(1).lower()
+    features["_sender_domain"] = sender_domain
+
+    # [4] Run XGBoost ML + heuristic ensemble detection
     prediction = email_detector.predict(features)
 
-    result_label = "phishing" if prediction["is_phishing"] else "safe"
+    result_label = prediction.get("result", "phishing" if prediction["is_phishing"] else "safe")
     confidence = round(prediction["confidence"], 4)
+    risk_score = prediction.get("risk_score", int(round(confidence * 100)))
+
+    # [5] Build enhanced response
+    details = prediction.get("details", {})
+    details["links_analyzed"] = len(url_scores)
+    details["links_flagged"] = links_flagged
+    if url_scores:
+        details["avg_link_score"] = round(sum(url_scores) / len(url_scores), 4)
 
     response = {
         "result": result_label,
-        "confidence": confidence,
+        "risk_score": risk_score,
         "risk_level": prediction.get("risk_level", "unknown"),
+        "confidence": confidence,
         "reasons": prediction.get("reasons", []),
+        "details": details,
+        # Backward compatible fields
         "links_analyzed": len(url_scores),
         "avg_link_score": round(sum(url_scores) / max(len(url_scores), 1), 4) if url_scores else None,
     }
 
-    # Log result
-    icon = "[!] PHISHING" if result_label == "phishing" else "[OK] safe   "
-    logger.info(f"  {icon}  confidence={confidence*100:.0f}%  email from={sender[:40]}")
+    # Log result with risk score
+    icons = {"phishing": "🔴 PHISHING", "suspicious": "⚠️  SUSPECT ", "safe": "✅ SAFE    "}
+    icon = icons.get(result_label, "[?]")
+    logger.info(f"  {icon}  risk={risk_score}%  conf={confidence*100:.0f}%  from={sender[:40]}")
 
     return jsonify(response), 200
 
@@ -223,11 +303,11 @@ def analyze():
 
 
 # -- Report endpoint ----------------------------------------------------------
-report_log = []
-
 @app.route("/report", methods=["POST"])
+@secure_endpoint
+@limiter.limit("10 per minute")
 def report_website():
-    """Receive user reports of suspicious websites."""
+    """Receive user feedback reporting a malicious site."""
     data = request.get_json(silent=True)
     if not data or "url" not in data:
         return jsonify({"error": "Missing 'url' field"}), 400
@@ -273,9 +353,10 @@ def analytics():
     })
 
 
-# -- Health check --------------------------------------------------------------
+# -- Health endpoint ----------------------------------------------------------
 @app.route("/health", methods=["GET"])
-def health():
+@limiter.exempt
+def health_check():
     return jsonify({
         "status": "ok",
         "service": "PhishGuard API v2.0",
