@@ -1,0 +1,38 @@
+services:
+  # -----------------------------------------------------
+  # PhishGuard Backend API
+  # -----------------------------------------------------
+  - type: web
+    name: phishguard-api
+    env: python
+    region: ohio
+    # Build command installs all dependencies
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    # Start command uses gunicorn for production
+    startCommand: "cd backend && gunicorn app:app"
+    
+    # Environment variables
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.12
+      - key: MODE
+        value: production
+      # Default fallback key. You should override this in the Render dashboard!
+      - key: PG_API_KEY
+        value: PG-API-KEY-2026
+      # Add your netlify site here
+      - key: NETLIFY_SITE
+        sync: false
+      - key: DATA_DIR
+        value: /opt/render/project/src/phishguard_data
+        
+    # -----------------------------------------------------
+    # Enterprise Persistent Disk (Crucial for SQLite & MLOps)
+    # -----------------------------------------------------
+    # Note: Persistent disks are a paid feature on Render ($1/mo minimum).
+    # If you are on the free tier, the database and retrained models 
+    # will wipe every time the server sleeps.
+    disk:
+      name: phishguard-data
+      mountPath: /opt/render/project/src/phishguard_data
+      sizeGB: 1

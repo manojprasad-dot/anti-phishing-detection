@@ -3,7 +3,9 @@ import os
 import datetime
 from threading import Lock
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'phishguard.db')
+# Support Render persistent disk via environment variable, fallback to local directory
+DATA_DIR = os.environ.get("DATA_DIR", os.path.dirname(__file__))
+DB_PATH = os.path.join(DATA_DIR, 'phishguard.db')
 db_lock = Lock()
 
 def get_db():

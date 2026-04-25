@@ -42,8 +42,9 @@ def get_feedback_samples():
     return samples
 
 def main():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(script_dir, "email_model.pkl")
+    # Support Render persistent disk via environment variable
+    DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__))))
+    model_path = os.path.join(DATA_DIR, "email_model.pkl")
 
     print("\n" + "="*60)
     print("  PhishGuard MLOps — Retraining Pipeline")
