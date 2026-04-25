@@ -3,67 +3,62 @@ import re
 import datetime
 import logging
 import sqlite3
+import socket
 from threading import Lock
 
 logger = logging.getLogger(__name__)
 
 # ─── Supabase Project Config ─────────────────────────────────────────
 PROJECT_REF = "zvlzjpwejnoyrgizrapy"
-POOLER_HOST = f"aws-0-ap-northeast-2.pooler.supabase.com"
-POOLER_PORT = 6543
 
-# ─── Auto-correct SUPABASE_URL ───────────────────────────────────────
+# ─── Parse SUPABASE_URL ──────────────────────────────────────────────
 RAW_SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
-SUPABASE_URL = None
+DB_PARAMS = None
 
 if RAW_SUPABASE_URL:
-    # Scenario 1: User pasted only the password (no "postgresql://" prefix)
+    # Extract password from various formats
+    password = None
+
     if not RAW_SUPABASE_URL.startswith("postgres"):
+        # User pasted only the password
         password = RAW_SUPABASE_URL
-        SUPABASE_URL = (
-            f"postgresql://postgres.{PROJECT_REF}:{password}"
-            f"@{POOLER_HOST}:{POOLER_PORT}/postgres?sslmode=require"
-        )
-        logger.info("Auto-built Supabase pooler URL from bare password.")
-
-    # Scenario 2: User pasted the IPv6 direct connection (db.xxx.supabase.co:5432)
-    elif "@db." in RAW_SUPABASE_URL:
-        match = re.search(r'postgres(?:ql)?://postgres:(.*?)@', RAW_SUPABASE_URL)
-        if match:
-            password = match.group(1)
-            SUPABASE_URL = (
-                f"postgresql://postgres.{PROJECT_REF}:{password}"
-                f"@{POOLER_HOST}:{POOLER_PORT}/postgres?sslmode=require"
-            )
-            logger.info("Auto-corrected IPv6 direct URL → IPv4 pooler URL.")
-        else:
-            SUPABASE_URL = RAW_SUPABASE_URL
-
-    # Scenario 3: User pasted a pooler URL but without the project ref in username
-    elif "pooler.supabase.com" in RAW_SUPABASE_URL and f"postgres.{PROJECT_REF}" not in RAW_SUPABASE_URL:
-        match = re.search(r'postgres(?:ql)?://postgres:(.*?)@', RAW_SUPABASE_URL)
-        if match:
-            password = match.group(1)
-            SUPABASE_URL = (
-                f"postgresql://postgres.{PROJECT_REF}:{password}"
-                f"@{POOLER_HOST}:{POOLER_PORT}/postgres?sslmode=require"
-            )
-            logger.info("Auto-corrected pooler URL to include tenant identifier.")
-        else:
-            SUPABASE_URL = RAW_SUPABASE_URL
-
-    # Scenario 4: URL looks correct already
     else:
-        SUPABASE_URL = RAW_SUPABASE_URL
-        # Ensure SSL is enabled for pooler connections
-        if "pooler.supabase.com" in SUPABASE_URL and "sslmode" not in SUPABASE_URL:
-            separator = "&" if "?" in SUPABASE_URL else "?"
-            SUPABASE_URL += f"{separator}sslmode=require"
-        logger.info("Using SUPABASE_URL as provided.")
+        # Extract password from URI format
+        match = re.search(r'://[^:]+:(.*?)@', RAW_SUPABASE_URL)
+        if match:
+            password = match.group(1)
+
+    if password:
+        # Use direct connection parameters (bypasses pooler issues)
+        direct_host = f"db.{PROJECT_REF}.supabase.co"
+        DB_PARAMS = {
+            "port": 5432,
+            "user": "postgres",
+            "password": password,
+            "dbname": "postgres",
+            "sslmode": "require",
+            "connect_timeout": 10,
+        }
+
+        # Force IPv4 resolution (Render free tier doesn't support IPv6)
+        try:
+            ipv4 = socket.getaddrinfo(
+                direct_host, 5432,
+                socket.AF_INET, socket.SOCK_STREAM
+            )
+            if ipv4:
+                DB_PARAMS["host"] = ipv4[0][4][0]  # Use resolved IPv4 address
+                logger.info(f"Resolved Supabase to IPv4: {DB_PARAMS['host']}")
+            else:
+                DB_PARAMS["host"] = direct_host
+                logger.warning("No IPv4 found, using hostname directly.")
+        except Exception as e:
+            DB_PARAMS["host"] = direct_host
+            logger.warning(f"IPv4 resolution failed: {e}. Using hostname.")
 
 # ─── Select Database Engine ──────────────────────────────────────────
 USE_POSTGRES = False
-if SUPABASE_URL:
+if DB_PARAMS:
     try:
         import psycopg2
         from psycopg2.extras import DictCursor
@@ -79,7 +74,7 @@ db_lock = Lock()
 
 def get_db():
     if USE_POSTGRES:
-        conn = psycopg2.connect(SUPABASE_URL)
+        conn = psycopg2.connect(**DB_PARAMS)
         return conn
     else:
         if not os.path.exists(DATA_DIR):
@@ -270,10 +265,9 @@ def get_all_feedback():
 db_error = None
 db_debug = None
 
-# Store the constructed URL for debugging (mask password)
-if SUPABASE_URL:
-    import re as _re
-    db_debug = _re.sub(r'://([^:]+):([^@]+)@', r'://\1:****@', SUPABASE_URL)
+# Store the connection info for debugging (mask password)
+if DB_PARAMS:
+    db_debug = f"host={DB_PARAMS.get('host','?')} port={DB_PARAMS.get('port','?')} user={DB_PARAMS.get('user','?')} sslmode={DB_PARAMS.get('sslmode','?')}"
 
 try:
     init_db()
@@ -284,7 +278,7 @@ except Exception as e:
         logger.error(f"PostgreSQL connection failed: {e}")
         logger.warning("Falling back to SQLite...")
         USE_POSTGRES = False
-        SUPABASE_URL = None
+        DB_PARAMS = None
         try:
             init_db()
             logger.info("SQLite fallback initialized successfully.")
