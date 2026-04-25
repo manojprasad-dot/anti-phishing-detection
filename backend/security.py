@@ -55,11 +55,11 @@ def secure_endpoint(f):
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # 1. API Key Validation
-        expected_key = os.environ.get("PG_API_KEY", "PG-API-KEY-2026")
+        # 1. API Key Validation (Enterprise B2B Auth)
+        from database import validate_api_key
         client_key = request.headers.get("X-API-Key")
         
-        if not client_key or client_key != expected_key:
+        if not client_key or not validate_api_key(client_key):
             safe_key = client_key[:5] if client_key else "None"
             log_attack("invalid_api_key", f"Key provided: {safe_key}... (truncated)")
             return jsonify({"error": "Unauthorized: Invalid or missing API Key"}), 401

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PhishGuard Enterprise Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0c0c0e; --panel: #141416; --border: #2a2a2d;
+            --text: #f0f0f0; --muted: #888;
+            --primary: #0A84FF; --danger: #FF3B30; --success: #34C759;
+        }
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0; padding: 40px;
+        }
+        .container {
+            max-width: 1000px; margin: 0 auto;
+        }
+        h1 { margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+        .grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 30px;
+        }
+        .card {
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 12px; padding: 25px;
+        }
+        .card h2 { margin-top: 0; font-size: 18px; color: var(--primary); }
+        table {
+            width: 100%; border-collapse: collapse; margin-top: 15px;
+        }
+        th, td {
+            text-align: left; padding: 10px; border-bottom: 1px solid var(--border);
+            font-size: 14px;
+        }
+        th { color: var(--muted); font-weight: 600; }
+        input[type="text"] {
+            width: 100%; padding: 10px; border: 1px solid var(--border);
+            background: var(--bg); color: var(--text); border-radius: 6px;
+            margin-bottom: 10px; font-family: 'Outfit', sans-serif;
+        }
+        button {
+            padding: 10px 20px; background: var(--primary); color: white;
+            border: none; border-radius: 6px; cursor: pointer; font-weight: 600;
+            font-family: 'Outfit', sans-serif; transition: 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+        .btn-danger { background: var(--danger); }
+        .status-msg { margin-top: 15px; font-size: 14px; color: var(--success); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛡️ PhishGuard Enterprise Dashboard</h1>
+        
+        <div class="grid">
+            <!-- API Keys Section -->
+            <div class="card">
+                <h2>B2B API Keys</h2>
+                <p style="color: var(--muted); font-size: 14px;">Manage access for enterprise clients.</p>
+                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                    <input type="text" id="company-name" placeholder="Company Name (e.g. Acme Corp)">
+                    <button onclick="generateKey()">Generate Key</button>
+                </div>
+                <table id="keys-table">
+                    <thead><tr><th>Key ID</th><th>Company</th><th>Status</th></tr></thead>
+                    <tbody><!-- Loaded via JS --></tbody>
+                </table>
+            </div>
+
+            <!-- MLOps Section -->
+            <div class="card">
+                <h2>MLOps Pipeline</h2>
+                <p style="color: var(--muted); font-size: 14px;">
+                    Retrain the XGBoost model using the latest user feedback from the database.
+                </p>
+                <div style="margin-top: 20px; background: var(--bg); padding: 15px; border-radius: 8px; border: 1px solid var(--border);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-weight: 600;">Model: Email XGBoost (v2.0)</div>
+                            <div style="font-size: 12px; color: var(--muted); margin-top: 5px;">Status: Online</div>
+                        </div>
+                        <button class="btn-danger" onclick="triggerRetrain()" id="btn-retrain">🚀 Retrain Model</button>
+                    </div>
+                </div>
+                <div id="mlops-status" class="status-msg"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadKeys() {
+            const res = await fetch('/admin/api/keys');
+            const keys = await res.json();
+            const tbody = document.querySelector('#keys-table tbody');
+            tbody.innerHTML = keys.map(k => `
+                <tr>
+                    <td style="font-family: monospace;">${k.key_id}</td>
+                    <td>${k.company_name}</td>
+                    <td><span style="color: var(--success);">Active</span></td>
+                </tr>
+            `).join('');
+        }
+
+        async function generateKey() {
+            const company = document.getElementById('company-name').value;
+            if (!company) return alert("Enter a company name");
+            const key_id = "PG-" + Math.random().toString(36).substring(2, 10).toUpperCase();
+            
+            await fetch('/admin/api/keys', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({key_id, company_name: company})
+            });
+            
+            document.getElementById('company-name').value = '';
+            loadKeys();
+        }
+
+        async function triggerRetrain() {
+            const btn = document.getElementById('btn-retrain');
+            const status = document.getElementById('mlops-status');
+            
+            btn.innerText = "⏳ Retraining...";
+            btn.style.opacity = "0.5";
+            
+            const res = await fetch('/admin/api/retrain', { method: 'POST' });
+            const data = await res.json();
+            
+            status.innerText = data.message;
+            status.style.color = "var(--success)";
+            
+            setTimeout(() => {
+                btn.innerText = "🚀 Retrain Model";
+                btn.style.opacity = "1";
+            }, 5000);
+        }
+
+        // Initialize
+        loadKeys();
+    </script>
+</body>
+</html>

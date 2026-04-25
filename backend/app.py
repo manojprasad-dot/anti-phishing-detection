@@ -27,7 +27,8 @@ import datetime
 # Allow imports from sibling packages
 sys.path.insert(0, os.path.dirname(__file__))
 
-from flask import Flask, request, jsonify, abort
+from flask import Flask, request, jsonify, abort, render_template
+
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -47,6 +48,7 @@ load_dotenv()
 from ml.detector import detector
 from ml.email_detector import email_detector
 from security import secure_endpoint, log_attack
+import database
 
 # -- [01] App setup -- Flask server initialized --------------------------------
 app = Flask(__name__)
@@ -98,7 +100,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # -- Request log (in-memory, last 500) ----------------------------------------
-request_log = []
+# Replaced with persistent SQLite database
+
 
 # -- Root endpoint (fixes Render 404s) ----------------------------------------
 @app.route("/", methods=["GET", "HEAD"])
@@ -170,17 +173,8 @@ def check_url():
     import threading
     threading.Thread(target=vt_scan, args=(url,), daemon=True).start()
 
-    # Log result
-    log_entry = {
-        "url": url,
-        "result": result_label,
-        "confidence": confidence,
-        "risk_level": prediction.get("risk_level", "unknown"),
-        "timestamp": ts
-    }
-    request_log.insert(0, log_entry)
-    if len(request_log) > 500:
-        request_log.pop()
+    # Log result to SQLite
+    database.log_request(url, result_label, confidence, prediction.get("risk_level", "unknown"), ts)
 
     # Console summary
     icon = "[!] PHISHING" if result_label == "phishing" else "[OK] safe   "
@@ -269,7 +263,8 @@ def check_email():
         "avg_link_score": round(sum(url_scores) / max(len(url_scores), 1), 4) if url_scores else None,
     }
 
-    # Log result with risk score
+    # Log email request to SQLite (storing sender instead of URL for emails)
+    database.log_request(f"email: {sender}", result_label, confidence, prediction.get("risk_level", "unknown"), ts)
     icons = {"phishing": "🔴 PHISHING", "suspicious": "⚠️  SUSPECT ", "safe": "✅ SAFE    "}
     icon = icons.get(result_label, "[?]")
     logger.info(f"  {icon}  risk={risk_score}%  conf={confidence*100:.0f}%  from={sender[:40]}")
@@ -319,9 +314,7 @@ def report_website():
         "ip": request.remote_addr,
     }
 
-    report_log.insert(0, report)
-    if len(report_log) > 200:
-        report_log.pop()
+    database.log_report(report["url"], report["reason"], report["timestamp"], report["ip"])
 
     logger.info(f"[REPORT] {report['url'][:60]} — reason: {report['reason']}")
 
@@ -331,26 +324,9 @@ def report_website():
 # -- Analytics endpoint -------------------------------------------------------
 @app.route("/analytics", methods=["GET"])
 def analytics():
-    """Returns aggregated stats from the request log."""
-    total = len(request_log)
-    threats = sum(1 for r in request_log if r["result"] == "phishing")
-    safe = total - threats
-
-    risk_dist = {"high": 0, "medium": 0, "low": 0, "safe": 0}
-    for r in request_log:
-        level = r.get("risk_level", "safe")
-        risk_dist[level] = risk_dist.get(level, 0) + 1
-
-    recent_threats = [r for r in request_log if r["result"] == "phishing"][:10]
-
-    return jsonify({
-        "total_analyzed": total,
-        "threats_detected": threats,
-        "safe_count": safe,
-        "threat_rate": round(threats / total * 100, 1) if total else 0,
-        "risk_distribution": risk_dist,
-        "recent_threats": recent_threats
-    })
+    """Returns aggregated stats from the request log database."""
+    stats = database.get_analytics()
+    return jsonify(stats)
 
 
 # -- Health endpoint ----------------------------------------------------------
@@ -403,10 +379,62 @@ def test():
 # -- Feedback receiver ---------------------------------------------------------
 @app.route("/feedback", methods=["POST"])
 def feedback():
-    """Receive user-submitted feedback for model improvement."""
+    """Receive user-submitted feedback for ML retraining."""
     data = request.get_json(silent=True) or {}
-    logger.info(f"[Feedback] url={data.get('url','')} verdict={data.get('verdict','')}")
+    url = data.get('url', '')
+    verdict = data.get('verdict', '')
+    ts = datetime.datetime.utcnow().isoformat()
+    
+    logger.info(f"[Feedback] url={url} verdict={verdict}")
+    if url and verdict:
+        database.log_feedback(url, verdict, ts)
+        
     return jsonify({"ok": True})
+
+
+# -- Admin Dashboard & MLOps ---------------------------------------------------
+@app.route("/admin", methods=["GET"])
+def admin_dashboard():
+    """Serve the Enterprise Admin Dashboard."""
+    return render_template("admin.html")
+
+@app.route("/admin/api/keys", methods=["GET", "POST"])
+def admin_keys():
+    """Manage enterprise API keys."""
+    conn = database.get_db()
+    if request.method == "POST":
+        data = request.get_json()
+        key_id = data.get("key_id")
+        company = data.get("company_name", "Unknown")
+        ts = datetime.datetime.utcnow().isoformat()
+        conn.execute("INSERT INTO api_keys (key_id, company_name, created_at) VALUES (?, ?, ?)", 
+                     (key_id, company, ts))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "created", "key": key_id})
+    else:
+        cursor = conn.execute("SELECT * FROM api_keys")
+        keys = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return jsonify(keys)
+
+@app.route("/admin/api/retrain", methods=["POST"])
+def trigger_retrain():
+    """Trigger the MLOps retraining pipeline."""
+    import threading
+    import subprocess
+    
+    def run_pipeline():
+        logger.info("[MLOps] Starting background retraining pipeline...")
+        script_path = os.path.join(os.path.dirname(__file__), "ml", "retrain_pipeline.py")
+        subprocess.run([sys.executable, script_path], check=False)
+        logger.info("[MLOps] Retraining complete. Reloading model...")
+        global email_detector
+        # Hot-reload the model
+        email_detector.__init__() 
+        
+    threading.Thread(target=run_pipeline, daemon=True).start()
+    return jsonify({"status": "started", "message": "ML pipeline started in background. Model will hot-reload upon completion."})
 
 
 # -- [01] Start server (multi-device access: host=0.0.0.0) --------------------
