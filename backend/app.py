@@ -401,21 +401,15 @@ def admin_dashboard():
 @app.route("/admin/api/keys", methods=["GET", "POST"])
 def admin_keys():
     """Manage enterprise API keys."""
-    conn = database.get_db()
     if request.method == "POST":
         data = request.get_json()
         key_id = data.get("key_id")
         company = data.get("company_name", "Unknown")
         ts = datetime.datetime.utcnow().isoformat()
-        conn.execute("INSERT INTO api_keys (key_id, company_name, created_at) VALUES (?, ?, ?)", 
-                     (key_id, company, ts))
-        conn.commit()
-        conn.close()
+        database.create_api_key(key_id, company, ts)
         return jsonify({"status": "created", "key": key_id})
     else:
-        cursor = conn.execute("SELECT * FROM api_keys")
-        keys = [dict(row) for row in cursor.fetchall()]
-        conn.close()
+        keys = database.get_all_api_keys()
         return jsonify(keys)
 
 @app.route("/admin/api/retrain", methods=["POST"])

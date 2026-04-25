@@ -16,10 +16,7 @@ from ml.train_email_xgboost import build_dataset, extract_all_features, train_mo
 
 def get_feedback_samples():
     """Fetch user feedback from DB and convert to training samples."""
-    conn = database.get_db()
-    cursor = conn.execute("SELECT * FROM feedback")
-    rows = cursor.fetchall()
-    conn.close()
+    rows = database.get_all_feedback()
 
     samples = []
     for row in rows:
