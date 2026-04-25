@@ -267,11 +267,20 @@ def get_all_feedback():
     return execute_query("SELECT * FROM feedback", fetchall=True)
 
 # ─── Initialize on import (with graceful fallback) ───────────────────
+db_error = None
+db_debug = None
+
+# Store the constructed URL for debugging (mask password)
+if SUPABASE_URL:
+    import re as _re
+    db_debug = _re.sub(r'://([^:]+):([^@]+)@', r'://\1:****@', SUPABASE_URL)
+
 try:
     init_db()
     logger.info(f"Database initialized successfully. PostgreSQL={USE_POSTGRES}")
 except Exception as e:
     if USE_POSTGRES:
+        db_error = str(e)
         logger.error(f"PostgreSQL connection failed: {e}")
         logger.warning("Falling back to SQLite...")
         USE_POSTGRES = False
