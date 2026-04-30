@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PhishGuard</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    :root{
+      --bg:#0c0c0e;--s1:#141416;--s2:#1a1a1d;
+      --b:rgba(255,255,255,0.07);
+      --t:#f0f0f0;--m:#666;
+      --red:#FF3B30;--grn:#34C759;--blu:#0A84FF;--ylw:#FF9F0A;
+    }
+    body{width:340px;background:var(--bg);color:var(--t);font-family:'Outfit',sans-serif;font-size:14px}
+
+    /* ── Header ─────────────────────────────── */
+    .hdr{padding:15px 18px;background:var(--s1);border-bottom:1px solid var(--b);
+      display:flex;align-items:center;justify-content:space-between}
+    .logo{display:flex;align-items:center;gap:10px}
+    .logo-txt{font-weight:700;font-size:16px;letter-spacing:-.4px}
+    .logo-txt b{color:var(--red)}
+    .pill{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;
+      color:var(--grn);background:rgba(52,199,89,.1);border:1px solid rgba(52,199,89,.2);
+      padding:3px 10px;border-radius:20px}
+    .dot{width:6px;height:6px;background:var(--grn);border-radius:50%;animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+    /* ── Current tab ─────────────────────────── */
+    .cur{padding:13px 18px;background:var(--s2);border-bottom:1px solid var(--b)}
+    .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--m);
+      font-weight:600;margin-bottom:5px}
+    .url-txt{font-family:'JetBrains Mono',monospace;font-size:11px;color:#999;
+      word-break:break-all;line-height:1.45}
+    .url-st{display:flex;align-items:center;gap:6px;margin-top:7px;font-size:12.5px;font-weight:600}
+    .url-st.safe{color:var(--grn)} .url-st.danger{color:var(--red)}
+    .url-st.scan{color:var(--blu)}
+
+    /* ── Stats row ───────────────────────────── */
+    .stats{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--b)}
+    .sc{padding:14px 0;text-align:center;border-right:1px solid var(--b)}
+    .sc:last-child{border-right:none}
+    .sv{font-size:24px;font-weight:700;font-family:'JetBrains Mono',monospace;margin-bottom:2px}
+    .sv.t{color:var(--blu)}.sv.p{color:var(--red)}.sv.s{color:var(--grn)}
+    .sk{font-size:10px;color:var(--m);text-transform:uppercase;letter-spacing:.06em}
+
+    /* ── Tabs ────────────────────────────────── */
+    .tabs{display:flex;border-bottom:1px solid var(--b)}
+    .tab{flex:1;padding:9px;text-align:center;font-size:12px;font-weight:600;
+      color:var(--m);cursor:pointer;transition:.2s;border-bottom:2px solid transparent}
+    .tab.active{color:var(--t);border-bottom-color:var(--red)}
+
+    /* ── Alert list ──────────────────────────── */
+    .panel{display:none} .panel.active{display:block}
+    .al-wrap{max-height:190px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#333 transparent}
+    .al{padding:9px 18px;border-bottom:1px solid var(--b);display:flex;
+      align-items:center;gap:10px;transition:background .15s;cursor:default}
+    .al:hover{background:var(--s1)}
+    .aldot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+    .aldot.p{background:var(--red)} .aldot.s{background:var(--grn)}
+    .al-info{flex:1;overflow:hidden}
+    .al-host{font-size:12px;font-weight:500;color:#ddd;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .al-time{font-size:10px;color:var(--m);margin-top:1px}
+    .albadge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px}
+    .albadge.p{background:rgba(255,59,48,.12);color:var(--red);border:1px solid rgba(255,59,48,.2)}
+    .albadge.s{background:rgba(52,199,89,.1);color:var(--grn);border:1px solid rgba(52,199,89,.15)}
+    .empty{padding:28px 18px;text-align:center;color:var(--m);font-size:12px}
+    .empty-ico{font-size:26px;margin-bottom:8px;opacity:.35}
+
+    /* ── Feedback log ────────────────────────── */
+    .fb{padding:9px 18px;border-bottom:1px solid var(--b);font-size:12px;
+      display:flex;align-items:center;gap:8px;color:#bbb}
+    .fb-verdict{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase}
+    .fb-verdict.safe{background:rgba(52,199,89,.12);color:var(--grn)}
+    .fb-verdict.phishing{background:rgba(255,59,48,.12);color:var(--red)}
+    .fb-verdict.user_proceeded{background:rgba(255,159,10,.12);color:var(--ylw)}
+
+    /* ── Actions bar ─────────────────────────── */
+    .actbar{padding:10px 18px;border-top:1px solid var(--b);
+      display:flex;justify-content:space-between;align-items:center}
+    .btn-sm{font-size:11px;color:var(--m);background:none;border:none;
+      cursor:pointer;font-family:'Outfit',sans-serif;transition:color .2s;padding:0}
+    .btn-sm:hover{color:var(--red)}
+    .ver{font-size:10px;color:#333}
+
+    /* ── Report & Quick Scan buttons ─────────── */
+    .action-btns{padding:8px 18px;border-top:1px solid var(--b);display:flex;gap:8px}
+    .btn-action{flex:1;padding:8px 10px;border-radius:8px;font-size:11px;font-weight:600;
+      font-family:'Outfit',sans-serif;cursor:pointer;transition:all .2s;
+      display:flex;align-items:center;justify-content:center;gap:5px;border:none}
+    .btn-report{background:rgba(255,59,48,.1);color:var(--red);border:1px solid rgba(255,59,48,.2)}
+    .btn-report:hover{background:rgba(255,59,48,.2)}
+    .btn-scan{background:rgba(10,132,255,.1);color:var(--blu);border:1px solid rgba(10,132,255,.2)}
+    .btn-scan:hover{background:rgba(10,132,255,.2)}
+    .shortcut{font-size:9px;color:#555;background:rgba(255,255,255,.05);padding:1px 5px;
+      border-radius:3px;border:1px solid rgba(255,255,255,.08)}
+
+    /* ── Report Modal ────────────────────────── */
+    .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;
+      display:flex;align-items:center;justify-content:center}
+    .modal{background:var(--s1);border:1px solid var(--b);border-radius:12px;
+      width:300px;padding:20px;animation:fadeIn .2s ease}
+    @keyframes fadeIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+    .modal h3{font-size:14px;margin-bottom:12px;color:var(--t)}
+    .modal select,.modal textarea{width:100%;background:var(--s2);color:var(--t);
+      border:1px solid var(--b);border-radius:6px;padding:8px;font-size:12px;
+      font-family:'Outfit',sans-serif;margin-bottom:10px;resize:vertical}
+    .modal textarea{height:60px}
+    .modal-btns{display:flex;gap:8px;justify-content:flex-end}
+    .modal-btns button{padding:7px 16px;border-radius:6px;font-size:12px;font-weight:600;
+      cursor:pointer;font-family:'Outfit',sans-serif;border:none;transition:all .2s}
+    .modal-submit{background:var(--red);color:#fff}
+    .modal-submit:hover{background:#e02020}
+    .modal-cancel{background:var(--s2);color:var(--m);border:1px solid var(--b)!important}
+    .modal-cancel:hover{color:var(--t)}
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="hdr">
+    <div class="logo">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <path d="M14 3L4 8v7c0 5.83 4.27 11.28 10 12.6C19.73 26.28 24 20.83 24 15V8L14 3z"
+              fill="rgba(255,59,48,.15)" stroke="#FF3B30" stroke-width="1.5"/>
+        <path d="M10 14l3 3 5-5" stroke="#FF3B30" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="logo-txt">Phish<b>Guard</b></div>
+    </div>
+    <div class="pill"><div class="dot"></div>Active</div>
+  </div>
+
+  <!-- Current Tab -->
+  <div class="cur">
+    <div class="lbl">Current Page</div>
+    <div class="url-txt" id="cur-url">Loading…</div>
+    <div class="url-st scan" id="cur-st"><span id="st-ico">⟳</span><span id="st-txt">Scanning…</span></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="sc"><div class="sv t" id="s-total">0</div><div class="sk">Scanned</div></div>
+    <div class="sc"><div class="sv p" id="s-phish">0</div><div class="sk">Threats</div></div>
+    <div class="sc"><div class="sv s" id="s-safe">0</div><div class="sk">Safe</div></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" data-panel="alerts">Recent Alerts</div>
+    <div class="tab" data-panel="feedback">User Feedback</div>
+  </div>
+
+  <!-- Alert List -->
+  <div class="panel active" id="panel-alerts">
+    <div class="al-wrap" id="al-list">
+      <div class="empty"><div class="empty-ico">🛡️</div>No activity yet.<br>Browse to start scanning.</div>
+    </div>
+  </div>
+
+  <!-- Feedback Log -->
+  <div class="panel" id="panel-feedback">
+    <div class="al-wrap" id="fb-list">
+      <div class="empty"><div class="empty-ico">💬</div>No feedback submitted yet.</div>
+    </div>
+  </div>
+
+  <!-- Action Buttons -->
+  <div class="action-btns">
+    <button class="btn-action btn-report" id="btn-report">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+        <line x1="4" y1="22" x2="4" y2="15"/>
+      </svg>
+      Report Website
+    </button>
+    <button class="btn-action btn-scan" id="btn-quickscan">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      Quick Scan <span class="shortcut">Ctrl+Shift+P</span>
+    </button>
+  </div>
+  <div class="action-btns" style="padding-top:0">
+    <button class="btn-action btn-email" id="btn-email-scanner" style="background:rgba(191,90,242,.1);color:#BF5AF2;border:1px solid rgba(191,90,242,.2);width:100%">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="22,7 12,13 2,7"/>
+      </svg>
+      ✉ Email Phishing Scanner
+    </button>
+  </div>
+
+  <!-- Actions -->
+  <div class="actbar">
+    <button class="btn-sm" id="btn-clear">Clear History</button>
+    <div class="ver"><a href="https://phishguard26.netlify.app/" target="_blank" style="color:#666;text-decoration:none;">Website (v2.0)</a></div>
+  </div>
+
+  <!-- Report Modal (hidden) -->
+  <div class="modal-bg" id="report-modal" style="display:none">
+    <div class="modal">
+      <h3>🚩 Report Suspicious Website</h3>
+      <div class="lbl" style="margin-bottom:6px">Website</div>
+      <div class="url-txt" id="report-url" style="margin-bottom:10px">—</div>
+      <select id="report-reason">
+        <option value="phishing">Phishing / Scam</option>
+        <option value="malware">Malware / Virus</option>
+        <option value="fake">Fake / Impersonation</option>
+        <option value="spam">Spam / Misleading</option>
+        <option value="other">Other</option>
+      </select>
+      <textarea id="report-notes" placeholder="Additional details (optional)..."></textarea>
+      <div class="modal-btns">
+        <button class="modal-cancel" id="report-cancel">Cancel</button>
+        <button class="modal-submit" id="report-submit">Submit Report</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Forced Update Overlay -->
+  <div class="modal-bg" id="update-modal" style="display:none; z-index:1000; background:var(--bg)">
+    <div class="modal" style="text-align:center; padding:30px 20px;">
+      <div style="font-size:40px; margin-bottom:15px;">🚀</div>
+      <h3 style="color:var(--red); font-size:18px; margin-bottom:8px">Update Required</h3>
+      <p style="color:var(--m); font-size:13px; margin-bottom:20px; line-height:1.5;">
+        A critical new version of PhishGuard is available. You must install the latest update to continue scanning securely.
+      </p>
+      <a id="update-btn" href="#" target="_blank" style="display:block; padding:10px; background:var(--blu); color:#fff; border-radius:8px; text-decoration:none; font-weight:600;">Download Update</a>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
