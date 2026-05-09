@@ -122,7 +122,7 @@ SUSPICIOUS_TLDS = [
 
 DANGEROUS_EXTENSIONS = [
     ".exe", ".zip", ".rar", ".scr", ".bat", ".cmd",
-    ".js", ".vbs", ".msi", ".pif", ".com", ".jar",
+    ".js", ".vbs", ".msi", ".pif", ".jar",
     ".iso", ".img", ".dmg", ".apk", ".ps1", ".wsf",
     ".hta", ".cpl", ".inf", ".reg", ".lnk", ".docm", ".xlsm",
 ]
@@ -181,6 +181,19 @@ def extract_email_features(
         Dict of 28 named features
     """
     features: Dict[str, Any] = {}
+
+    # -- Strip HTML tags from email body if present ---
+    # Gmail/Outlook scanner may send raw HTML which inflates features
+    if '<html' in email_text.lower() or '<div' in email_text.lower() or '<table' in email_text.lower():
+        # Extract URLs from HTML BEFORE stripping (preserves href targets)
+        html_urls = re.findall(r'href\s*=\s*["\']?(https?://[^"\'>\s]+)', email_text, re.IGNORECASE)
+        # Strip all HTML tags to get clean text
+        email_text = re.sub(r'<[^>]+>', ' ', email_text)
+        # Collapse whitespace
+        email_text = re.sub(r'\s+', ' ', email_text).strip()
+    else:
+        html_urls = []
+
     text_lower = email_text.lower()
     combined = f"{subject} {email_text}".lower()
     sender_domain = _get_sender_domain(sender)
@@ -303,9 +316,16 @@ def extract_email_features(
         # == 18-20: Structural signals =========================================
 
         # [18] Mentions dangerous attachments
-        features["has_dangerous_attachment"] = int(
-            any(ext in text_lower for ext in DANGEROUS_EXTENSIONS)
-        )
+        # Use word-boundary matching to avoid false positives from URLs
+        # e.g. "slack.com" should NOT trigger ".com" extension match
+        has_dangerous = False
+        for ext in DANGEROUS_EXTENSIONS:
+            # Match patterns like "file.exe" or "document.zip" but not "google.com"
+            pattern = r'\b\w+' + re.escape(ext) + r'(?:\s|$|[,;"\'\)])'
+            if re.search(pattern, text_lower):
+                has_dangerous = True
+                break
+        features["has_dangerous_attachment"] = int(has_dangerous)
 
         # [19] Spelling/grammar score (simple heuristic)
         # Count common phishing misspellings

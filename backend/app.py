@@ -161,8 +161,11 @@ def check_email():
     features = extract_email_features(email_text, sender, subject)
 
     # Cross-check links in email body with URL phishing model
+    # Use email_html (if provided by extension) for better link extraction
     import re as _re
-    urls_in_email = _re.findall(r'https?://[^\s<>"\'\)\]]+', email_text)
+    email_html = str(data.get("email_html", "")).strip()
+    link_source = email_html if email_html else email_text
+    urls_in_email = _re.findall(r'https?://[^\s<>"\'\)\]]+', link_source)
     url_scores = []
     for url in urls_in_email[:5]:  # limit to 5 URLs
         try:

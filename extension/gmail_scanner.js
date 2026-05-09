@@ -159,7 +159,8 @@ async function scanEmail(bodyText, bodyHtml, sender, subject, containerEl) {
         "X-Extension-ID": chrome.runtime.id,
       },
       body: JSON.stringify({
-        email_text: bodyHtml || bodyText,  // Prefer HTML for link analysis
+        email_text: bodyText,           // Clean text for ML classification
+        email_html: bodyHtml || "",      // HTML only for link extraction
         sender: sender,
         subject: subject,
       }),
