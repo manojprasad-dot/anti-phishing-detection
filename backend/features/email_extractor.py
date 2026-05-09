@@ -2,7 +2,7 @@
 PhishGuard -- features/email_extractor.py
 MODULE 5: Email Phishing Detection — Feature Extraction
 
-Extracts 20 structured features from email content for ML classification.
+Extracts 28 structured features from email content for ML classification.
 Cross-references links found in emails with the existing URL phishing model.
 
 Features:
@@ -11,10 +11,12 @@ Features:
   [10-13]  Sender analysis
   [14-17]  Content patterns
   [18-20]  Structural signals
+  [21-28]  NEW: Advanced content analysis
 """
 
 import re
 import math
+import base64
 from typing import Dict, Any, List
 from collections import Counter
 
@@ -30,6 +32,14 @@ URGENT_PHRASES = [
     "verify your identity", "confirm your payment", "expire soon",
     "last warning", "final notice", "act now", "time sensitive",
     "respond immediately", "do not ignore", "limited time",
+    # New urgency phrases
+    "account will be closed", "must verify", "expires today",
+    "hours remaining", "respond now", "take action immediately",
+    "risk losing", "will be terminated", "will be permanently",
+    "click below immediately", "requires your attention",
+    "update required", "mandatory update", "confirm now",
+    "verify within", "must be completed", "failure to respond",
+    "your access will be", "will be disabled", "will be frozen",
 ]
 
 THREAT_PHRASES = [
@@ -37,6 +47,12 @@ THREAT_PHRASES = [
     "terminated", "disabled", "restricted", "blocked", "frozen",
     "illegal activity", "legal action", "law enforcement",
     "permanent closure", "account closure", "identity theft",
+    # New threat phrases
+    "penalty", "fine", "prosecution", "court order", "arrest warrant",
+    "federal investigation", "criminal charges", "tax fraud",
+    "money laundering", "seized", "confiscated", "forfeited",
+    "compliance violation", "regulatory action", "cease and desist",
+    "your data has been", "security incident", "data breach notification",
 ]
 
 REWARD_PHRASES = [
@@ -44,6 +60,12 @@ REWARD_PHRASES = [
     "you have been selected", "lottery", "million dollars",
     "exclusive offer", "limited offer", "special promotion",
     "click to claim", "redeem now", "bonus", "reward",
+    # New reward phrases
+    "gift card", "cashback", "refund pending", "unclaimed funds",
+    "inheritance", "beneficiary", "lottery winner", "sweepstakes",
+    "guaranteed income", "work from home", "make money fast",
+    "investment opportunity", "double your money", "risk free",
+    "no obligation", "free trial", "free membership",
 ]
 
 GENERIC_GREETINGS = [
@@ -51,6 +73,11 @@ GENERIC_GREETINGS = [
     "dear valued customer", "dear sir/madam", "dear member",
     "dear client", "dear subscriber", "hello user",
     "attention user", "dear recipient",
+    # New generic greetings
+    "dear valued member", "dear account owner", "dear patron",
+    "dear cardholder", "dear taxpayer", "dear beneficiary",
+    "dear winner", "dear friend", "to whom it may concern",
+    "dear email user", "attention account holder",
 ]
 
 # -- Sender analysis -----------------------------------------------------------
@@ -58,6 +85,10 @@ FREEMAIL_DOMAINS = [
     "gmail.com", "yahoo.com", "hotmail.com", "outlook.com",
     "aol.com", "mail.com", "protonmail.com", "yandex.com",
     "zoho.com", "icloud.com", "live.com", "msn.com",
+    # New freemail providers
+    "mail.ru", "gmx.com", "gmx.net", "inbox.com",
+    "rediffmail.com", "tutanota.com", "fastmail.com",
+    "guerrillamail.com", "tempmail.com", "throwaway.email",
 ]
 
 BRAND_NAMES = [
@@ -65,6 +96,12 @@ BRAND_NAMES = [
     "facebook", "instagram", "ebay", "dropbox", "chase", "wellsfargo",
     "citibank", "dhl", "fedex", "linkedin", "twitter", "steam",
     "whatsapp", "telegram", "coinbase", "binance", "bank of america",
+    # New brands
+    "uber", "venmo", "zelle", "usps", "ups", "spotify", "discord",
+    "tiktok", "snapchat", "stripe", "shopify", "docusign", "adobe",
+    "zoom", "slack", "metamask", "opensea", "robinhood", "schwab",
+    "fidelity", "vanguard", "americanexpress", "capitalone", "discover",
+    "irs", "social security", "medicare", "department of",
 ]
 
 # -- Suspicious link patterns ---------------------------------------------------
@@ -72,17 +109,22 @@ SHORTENING_SERVICES = [
     "bit.ly", "goo.gl", "t.co", "tinyurl.com", "ow.ly",
     "is.gd", "buff.ly", "adf.ly", "j.mp", "rb.gy", "cutt.ly",
     "shorturl.at", "tr.im",
+    "v.gd", "clck.ru", "tny.im", "tiny.cc", "s.id",
 ]
 
 SUSPICIOUS_TLDS = [
     ".xyz", ".top", ".club", ".work", ".click", ".link",
     ".tk", ".ml", ".ga", ".cf", ".gq", ".pw", ".buzz",
     ".icu", ".cam", ".monster", ".rest", ".surf",
+    ".loan", ".date", ".trade", ".gdn", ".men",
+    ".space", ".host", ".site", ".website", ".online",
 ]
 
 DANGEROUS_EXTENSIONS = [
     ".exe", ".zip", ".rar", ".scr", ".bat", ".cmd",
     ".js", ".vbs", ".msi", ".pif", ".com", ".jar",
+    ".iso", ".img", ".dmg", ".apk", ".ps1", ".wsf",
+    ".hta", ".cpl", ".inf", ".reg", ".lnk", ".docm", ".xlsm",
 ]
 
 
@@ -128,7 +170,7 @@ def extract_email_features(
     subject: str = ""
 ) -> Dict[str, Any]:
     """
-    Extract 20 features from email content for ML classification.
+    Extract 28 features from email content for ML classification.
 
     Args:
         email_text: Full email body (plain text or HTML)
@@ -136,7 +178,7 @@ def extract_email_features(
         subject:    Email subject line
 
     Returns:
-        Dict of 20 named features
+        Dict of 28 named features
     """
     features: Dict[str, Any] = {}
     text_lower = email_text.lower()
@@ -154,9 +196,8 @@ def extract_email_features(
         features["urgent_keyword_count"] = min(urgent_count, 10)
 
         # [03] Has threat language
-        features["has_threat_language"] = int(
-            _count_matches(combined, THREAT_PHRASES) > 0
-        )
+        threat_count = _count_matches(combined, THREAT_PHRASES)
+        features["has_threat_language"] = int(threat_count > 0)
 
         # [04] Has reward/prize language
         features["has_reward_language"] = int(
@@ -273,6 +314,10 @@ def extract_email_features(
             "netfl1x", "1nstagram", "faceb00k", "tw1tter",
             "acccount", "verifiy", "securty", "infomation",
             "updatte", "suspened", "unauthorised",
+            # New misspellings
+            "amaz0n", "netf1ix", "ch4se", "we11sfargo",
+            "verfy", "confrm", "acction", "immedately",
+            "suspeneded", "restrcted", "disab1ed", "acc0unt",
         ]
         features["spelling_error_score"] = min(
             _count_matches(combined, misspellings), 5
@@ -282,6 +327,74 @@ def extract_email_features(
         # This is computed externally and injected — default to 0
         features["url_phishing_score"] = 0.0
 
+        # == 21-28: NEW Advanced content analysis ==============================
+
+        # [21] Has base64 encoded content (obfuscation)
+        has_b64 = bool(re.search(
+            r'(?:data:[^;]+;base64,|Content-Transfer-Encoding:\s*base64)',
+            email_text, re.IGNORECASE
+        ))
+        # Also check for long base64-like strings in the body
+        if not has_b64:
+            has_b64 = bool(re.search(r'[A-Za-z0-9+/]{50,}={0,2}', email_text))
+        features["has_base64_content"] = int(has_b64)
+
+        # [22] Has JavaScript (script injection in HTML emails)
+        features["has_javascript"] = int(bool(re.search(
+            r'<script|javascript:|on\w+\s*=\s*["\']|eval\s*\(|document\.(cookie|write|location)',
+            text_lower
+        )))
+
+        # [23] Link to text ratio — phishing emails are link-heavy
+        plain_text = re.sub(r'<[^>]+>', '', email_text)
+        word_count = len(plain_text.split())
+        link_count = len(urls)
+        features["link_to_text_ratio"] = round(
+            link_count / max(word_count, 1), 4
+        )
+
+        # [24] Has hidden text (CSS tricks: display:none, font-size:0, visibility:hidden)
+        features["has_hidden_text"] = int(bool(re.search(
+            r'display\s*:\s*none|font-size\s*:\s*0|visibility\s*:\s*hidden|'
+            r'color\s*:\s*(?:white|#fff|#ffffff|transparent)|'
+            r'height\s*:\s*0|overflow\s*:\s*hidden',
+            text_lower
+        )))
+
+        # [25] Reply-to mismatch (reply-to address differs from sender)
+        reply_to_match = re.search(r'reply-to:\s*([^\s<>,]+@[^\s<>,]+)', text_lower)
+        if reply_to_match:
+            reply_to_domain = _get_sender_domain(reply_to_match.group(1))
+            features["reply_to_mismatch"] = int(
+                reply_to_domain != "" and sender_domain != "" and
+                reply_to_domain != sender_domain
+            )
+        else:
+            features["reply_to_mismatch"] = 0
+
+        # [26] Has tracking pixel (tiny 1x1 images for tracking)
+        features["has_tracking_pixel"] = int(bool(re.search(
+            r'<img[^>]+(?:width\s*=\s*["\']?1["\']?\s+height\s*=\s*["\']?1|'
+            r'height\s*=\s*["\']?1["\']?\s+width\s*=\s*["\']?1|'
+            r'(?:1x1|pixel|track|beacon|open)[^>]*\.(?:gif|png|jpg))',
+            text_lower
+        )))
+
+        # [27] Urgency in subject line — subject-level urgency is a strong signal
+        subject_urgency = _count_matches(subject.lower(), [
+            "urgent", "action required", "immediately", "alert", "warning",
+            "final notice", "last chance", "expire", "suspended", "locked",
+            "verify", "confirm", "update required", "act now", "important",
+        ])
+        features["urgency_in_subject"] = min(subject_urgency, 5)
+
+        # [28] Body entropy — random-looking body text scores higher
+        # Strip HTML tags for cleaner entropy calculation
+        clean_body = re.sub(r'<[^>]+>', '', email_text)
+        features["body_entropy"] = round(
+            _shannon_entropy(clean_body[:500]), 4  # First 500 chars
+        )
+
     except Exception:
         features = {k: 0 for k in email_feature_names()}
 
@@ -289,7 +402,7 @@ def extract_email_features(
 
 
 def email_feature_names() -> List[str]:
-    """Ordered list of 20 email feature names."""
+    """Ordered list of 28 email feature names."""
     return [
         # Urgency & threat (4)
         "has_urgent_language", "urgent_keyword_count",
@@ -306,6 +419,11 @@ def email_feature_names() -> List[str]:
         # Structural signals (3)
         "has_dangerous_attachment", "spelling_error_score",
         "url_phishing_score",
+        # NEW: Advanced content analysis (8)
+        "has_base64_content", "has_javascript",
+        "link_to_text_ratio", "has_hidden_text",
+        "reply_to_mismatch", "has_tracking_pixel",
+        "urgency_in_subject", "body_entropy",
     ]
 
 

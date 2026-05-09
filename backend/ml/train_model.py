@@ -50,7 +50,7 @@ def load_dataset():
 
 
 def extract_all_features(urls, labels, max_samples=50000):
-    """Extract 30 features from URLs."""
+    """Extract 38 features from URLs."""
     if isinstance(urls, pd.DataFrame):
         X = np.nan_to_num(urls.values.astype(float), nan=0.0)
         y = labels.values.ravel() if hasattr(labels, 'values') else labels
@@ -112,10 +112,10 @@ def train_model(X, y):
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    print(f"\n[4/6] Training RandomForest (300 trees)...")
+    print(f"\n[4/6] Training RandomForest (400 trees)...")
     start = time.time()
     model = RandomForestClassifier(
-        n_estimators=300,
+        n_estimators=400,
         max_depth=20,
         min_samples_split=5,
         min_samples_leaf=2,
@@ -176,7 +176,7 @@ def save_model(model, metrics, path):
     data = {
         "model": model,
         "model_type": "RandomForestClassifier",
-        "n_features": 30,
+        "n_features": 38,
         "feature_names": _feature_names(),
         "trained_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "dataset": "UCI PhiUSIIL (50K balanced)",
@@ -194,7 +194,7 @@ def main():
     model_path = os.path.join(script_dir, "model.pkl")
     print("\n" + "="*60)
     print("  PhishGuard ML Training v3.0")
-    print("  RandomForest + 30 Features + 50K URLs")
+    print("  RandomForest + 38 Features + 50K URLs")
     print("="*60)
     print(f"\n[1/6] Loading dataset...")
     urls, labels = load_dataset()

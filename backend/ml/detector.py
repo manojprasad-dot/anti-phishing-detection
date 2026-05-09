@@ -1,7 +1,7 @@
 """
 PhishGuard -- ml/detector.py
 MODULE 4: Analytics & Machine Learning Module
-Ensemble Phishing Detector: XGBoost ML model + Heuristic rule engine.
+Ensemble Phishing Detector: ML model + Heuristic rule engine.
 
 Process Flow Reference:
   [08] Feature vector forwarded to the phishing detection model
@@ -18,22 +18,32 @@ logger = logging.getLogger(__name__)
 
 # -- Feature weights for the heuristic engine ----------------------------------
 FEATURE_WEIGHTS = {
-    "is_ip_address":           0.65,
-    "brand_hyphenated":        0.55,
-    "brand_in_hostname":       0.50,
+    # --- Original rules (retuned) ---
+    "is_ip_address":           0.70,
+    "brand_hyphenated":        0.60,
+    "brand_in_hostname":       0.55,
     "has_suspicious_keyword":  0.40,
     "is_known_tld_suspicious": 0.35,
-    "has_at_symbol":           0.35,
-    "has_lookalike_chars":     0.30,
-    "has_sensitive_path":      0.25,
-    "is_shortened_url":        0.30,
-    "num_subdomains":          0.08,   # per subdomain above 2
-    "has_encoded_chars":       0.20,
-    "has_redirect_param":      0.18,
-    "has_double_slash":        0.18,
-    "url_length_penalty":      0.10,   # applied if url_length > 100
-    "no_https_penalty":        0.15,   # applied if uses_https == 0
-    "high_entropy_penalty":    0.15,   # applied if hostname_entropy > 3.5
+    "has_at_symbol":           0.40,
+    "has_lookalike_chars":     0.35,
+    "has_sensitive_path":      0.20,
+    "is_shortened_url":        0.35,
+    "num_subdomains":          0.10,   # per subdomain above 2
+    "has_encoded_chars":       0.22,
+    "has_redirect_param":      0.20,
+    "has_double_slash":        0.20,
+    "url_length_penalty":      0.12,   # applied if url_length > 100
+    "no_https_penalty":        0.18,   # applied if uses_https == 0
+    "high_entropy_penalty":    0.18,   # applied if hostname_entropy > 3.5
+    # --- NEW rules ---
+    "has_punycode":            0.55,   # IDN homograph attacks
+    "has_port_number":         0.30,   # unusual ports
+    "path_has_double_extension": 0.35, # file.pdf.exe
+    "high_subdomain_length":   0.20,   # subdomain > 20 chars
+    "abnormal_vowel_ratio":    0.15,   # generated domains
+    "high_domain_tokens":      0.25,   # many hyphen-separated tokens
+    "high_digit_subdomain":    0.20,   # digits in subdomain
+    "long_tld":                0.15,   # TLD > 5 chars
     # Negatives (reduces score)
     "is_known_legitimate":    -1.00,   # hard override
 }
@@ -45,7 +55,7 @@ class PhishingDetector:
     """
     [08] Feature vector forwarded to the phishing detection model.
     [09] Prediction result generated.
-    Ensemble: XGBoost (70%) + Heuristic rules (30%)
+    Ensemble: ML (75%) + Heuristic rules (25%)
     """
 
     def __init__(self):
@@ -56,7 +66,7 @@ class PhishingDetector:
     # -- Primary predict method (Ensemble: ML + Heuristic) ---------------------
     def predict(self, features: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Ensemble detection: combines XGBoost ML model + heuristic engine.
+        Ensemble detection: combines ML model + heuristic engine.
         Final score = weighted average for maximum accuracy.
         Returns: { is_phishing, confidence, risk_level, reasons }
         """
@@ -74,12 +84,16 @@ class PhishingDetector:
             ml_result = self._ml_predict(features)
             ml_conf = ml_result["confidence"]
 
-            # Weighted ensemble: 70% ML + 30% Heuristic
-            combined = (ml_conf * 0.7) + (h_conf * 0.3)
+            # Weighted ensemble: 75% ML + 25% Heuristic
+            combined = (ml_conf * 0.75) + (h_conf * 0.25)
 
             # If either engine is very confident, boost the score
-            if h_conf >= 0.8 or ml_conf >= 0.8:
+            if h_conf >= 0.75 or ml_conf >= 0.85:
                 combined = max(combined, max(h_conf, ml_conf))
+
+            # If BOTH agree it's phishing, boost further
+            if h_conf >= 0.5 and ml_conf >= 0.5:
+                combined = max(combined, (h_conf + ml_conf) / 2 + 0.05)
 
             combined = min(combined, 1.0)
             is_phishing = combined >= PHISHING_THRESHOLD
@@ -92,74 +106,143 @@ class PhishingDetector:
     def _heuristic_predict(self, f: Dict[str, Any]) -> Dict[str, Any]:
         score   = 0.0
         reasons: List[str] = []
+        flags_triggered = 0  # Count total flags for combo boosting
 
         if f.get("is_ip_address"):
             score += FEATURE_WEIGHTS["is_ip_address"]
             reasons.append("Uses raw IP address instead of a domain name")
+            flags_triggered += 1
 
         if f.get("brand_hyphenated"):
             score += FEATURE_WEIGHTS["brand_hyphenated"]
             reasons.append("Domain uses a brand name with hyphens (brand spoofing)")
+            flags_triggered += 1
 
         if f.get("brand_in_hostname"):
             score += FEATURE_WEIGHTS["brand_in_hostname"]
             reasons.append("Hostname contains a major brand name on a non-official domain")
+            flags_triggered += 1
 
         if f.get("has_suspicious_keyword"):
             score += FEATURE_WEIGHTS["has_suspicious_keyword"]
             reasons.append("URL contains phishing-related keywords")
+            flags_triggered += 1
 
         if f.get("is_known_tld_suspicious"):
             score += FEATURE_WEIGHTS["is_known_tld_suspicious"]
             reasons.append("Uses a high-risk top-level domain (.xyz, .tk, .ml, etc.)")
+            flags_triggered += 1
 
         if f.get("has_at_symbol"):
             score += FEATURE_WEIGHTS["has_at_symbol"]
             reasons.append("URL contains '@' symbol which can obscure the real destination")
+            flags_triggered += 1
 
         if f.get("has_lookalike_chars"):
             score += FEATURE_WEIGHTS["has_lookalike_chars"]
             reasons.append("Hostname uses lookalike characters (0->o, 1->l)")
+            flags_triggered += 1
 
         if f.get("has_sensitive_path"):
             score += FEATURE_WEIGHTS["has_sensitive_path"]
             reasons.append("URL path contains sensitive terms like 'login', 'account', 'verify'")
+            flags_triggered += 1
 
         if f.get("is_shortened_url"):
             score += FEATURE_WEIGHTS["is_shortened_url"]
             reasons.append("URL uses a shortening service to hide the real destination")
+            flags_triggered += 1
 
         subdomains = max(0, int(f.get("num_subdomains", 0)) - 2)
         if subdomains > 0:
             score += FEATURE_WEIGHTS["num_subdomains"] * subdomains
             reasons.append(f"Excessive subdomain depth ({int(f.get('num_subdomains',0))} levels)")
+            flags_triggered += 1
 
         if f.get("has_encoded_chars"):
             score += FEATURE_WEIGHTS["has_encoded_chars"]
             reasons.append("URL contains encoded characters to obfuscate the path")
+            flags_triggered += 1
 
         if f.get("has_redirect_param"):
             score += FEATURE_WEIGHTS["has_redirect_param"]
             reasons.append("URL contains redirect parameters")
+            flags_triggered += 1
 
         if f.get("has_double_slash"):
             score += FEATURE_WEIGHTS["has_double_slash"]
             reasons.append("URL path contains a double slash redirect technique")
+            flags_triggered += 1
 
         if int(f.get("url_length", 0)) > 100:
             score += FEATURE_WEIGHTS["url_length_penalty"]
             reasons.append(f"Unusually long URL ({f.get('url_length')} characters)")
+            flags_triggered += 1
 
         if not f.get("uses_https"):
             score += FEATURE_WEIGHTS["no_https_penalty"]
             reasons.append("Page served over HTTP (not encrypted HTTPS)")
+            flags_triggered += 1
 
         if float(f.get("hostname_entropy", 0)) > 3.5:
             score += FEATURE_WEIGHTS["high_entropy_penalty"]
             reasons.append("Hostname has high entropy (randomly generated domain)")
+            flags_triggered += 1
+
+        # ── NEW heuristic rules ───────────────────────────────────────────
+
+        if f.get("has_punycode"):
+            score += FEATURE_WEIGHTS["has_punycode"]
+            reasons.append("Punycode/IDN domain detected — possible homograph attack")
+            flags_triggered += 1
+
+        if f.get("has_port_number"):
+            score += FEATURE_WEIGHTS["has_port_number"]
+            reasons.append("URL uses an unusual port number (non-standard)")
+            flags_triggered += 1
+
+        if f.get("path_has_double_extension"):
+            score += FEATURE_WEIGHTS["path_has_double_extension"]
+            reasons.append("URL path contains double file extension (e.g., .pdf.exe)")
+            flags_triggered += 1
+
+        if int(f.get("subdomain_length", 0)) > 20:
+            score += FEATURE_WEIGHTS["high_subdomain_length"]
+            reasons.append("Excessively long subdomain (obfuscation technique)")
+            flags_triggered += 1
+
+        vcr = float(f.get("vowel_consonant_ratio", 0.6))
+        if vcr < 0.2 or vcr > 1.5:
+            score += FEATURE_WEIGHTS["abnormal_vowel_ratio"]
+            reasons.append("Domain has abnormal letter distribution (generated name)")
+            flags_triggered += 1
+
+        if int(f.get("domain_token_count", 1)) >= 4:
+            score += FEATURE_WEIGHTS["high_domain_tokens"]
+            reasons.append(f"Domain has {f.get('domain_token_count')} hyphen-separated tokens")
+            flags_triggered += 1
+
+        if float(f.get("digit_ratio_in_subdomain", 0)) > 0.4:
+            score += FEATURE_WEIGHTS["high_digit_subdomain"]
+            reasons.append("Subdomain contains high ratio of digits")
+            flags_triggered += 1
+
+        if int(f.get("tld_length", 0)) > 5:
+            score += FEATURE_WEIGHTS["long_tld"]
+            reasons.append("Uses an unusually long TLD")
+            flags_triggered += 1
+
+        # ── Combo boosting: multiple flags = exponentially more suspicious ──
+        if flags_triggered >= 5:
+            combo_boost = 0.20
+            score += combo_boost
+            reasons.append(f"Multi-signal alert: {flags_triggered} suspicious indicators detected")
+        elif flags_triggered >= 3:
+            combo_boost = 0.10
+            score += combo_boost
 
         confidence = min(score, 1.0)
-        return self._result(confidence >= PHISHING_THRESHOLD, confidence, reasons[:5])
+        return self._result(confidence >= PHISHING_THRESHOLD, confidence, reasons[:6])
 
     # -- ML model prediction ---------------------------------------------------
     def _ml_predict(self, features: Dict[str, Any]) -> Dict[str, Any]:
@@ -170,6 +253,15 @@ class PhishingDetector:
                 dtype=np.float32
             )
             vector = np.nan_to_num(vector, nan=0.0)
+
+            # Handle feature count mismatch (old model with 30 features vs new 38)
+            expected = self.ml_model.n_features_in_
+            if vector.shape[1] > expected:
+                vector = vector[:, :expected]
+            elif vector.shape[1] < expected:
+                padding = np.zeros((1, expected - vector.shape[1]), dtype=np.float32)
+                vector = np.concatenate([vector, padding], axis=1)
+
             proba = self.ml_model.predict_proba(vector)[0][1]  # P(phishing)
             return self._result(proba >= PHISHING_THRESHOLD, round(float(proba), 4), [])
         except Exception as e:
@@ -205,7 +297,7 @@ class PhishingDetector:
                 "type": self.model_meta.get("model_type", "sklearn"),
                 "accuracy": self.model_meta.get("accuracy"),
                 "f1": self.model_meta.get("f1"),
-                "features": self.model_meta.get("n_features", 30),
+                "features": self.model_meta.get("n_features", 38),
                 "trained_at": self.model_meta.get("trained_at"),
                 "dataset": self.model_meta.get("dataset"),
             }

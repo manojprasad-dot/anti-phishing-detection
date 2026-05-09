@@ -278,7 +278,7 @@ def analytics():
 def health():
     return jsonify({
         "status": "ok",
-        "service": "PhishGuard API v2.0",
+        "service": "PhishGuard API v3.0",
         "url_model": detector.get_model_info(),
         "email_model": email_detector.get_model_info(),
         "timestamp": datetime.datetime.utcnow().isoformat()
@@ -331,7 +331,7 @@ def feedback():
 # -- [01] Start server (multi-device access: host=0.0.0.0) --------------------
 if __name__ == "__main__":
     print("\n" + "="*54)
-    print("  PhishGuard API Server v2.0")
+    print("  PhishGuard API Server v3.0")
     print("  >  /check_url   - URL phishing detection")
     print("  >  /check_email - Email phishing detection")
     print("  >  /test        - run test batch")

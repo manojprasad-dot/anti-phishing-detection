@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "PhishGuard — AI Phishing Detector",
-  "version": "2.0.0",
-  "description": "AI-powered real-time phishing detection for websites and emails. Monitors URLs, scans email content, detects threats, and alerts users instantly.",
+  "name": "PhishGuard 3.0 — AI Phishing Detector",
+  "version": "3.0.0",
+  "description": "AI-powered real-time phishing detection with 38 URL features, 28 email features, combo-boosted heuristics, and enterprise-grade ML ensemble for maximum accuracy.",
   "permissions": [
     "tabs",
     "activeTab",
