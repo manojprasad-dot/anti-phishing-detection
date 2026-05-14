@@ -13,8 +13,9 @@
 const API_BASE = "https://phishguard-api-6dmc.onrender.com";
 const CHECK_EMAIL_URL = `${API_BASE}/check_email`;
 
-// Track scanned emails to avoid re-scanning
-const scannedEmails = new Set();
+// Track only the CURRENTLY DISPLAYED email — reset on navigation so
+// every email is scanned fresh each time the user opens it.
+let currentEmailFingerprint = null;
 
 // Detect which email provider we're on
 const HOST = window.location.hostname;
@@ -41,9 +42,13 @@ function startObserver() {
     subtree: true,
   });
 
+  // Also run a periodic check every 3 seconds to catch emails that
+  // open without triggering a detectable DOM mutation.
+  setInterval(() => checkForOpenEmail(), 3000);
+
   // Also check immediately on load
   checkForOpenEmail();
-  console.log("[PhishGuard Email] Observer started — watching for opened emails");
+  console.log("[PhishGuard Email] Observer started — scanning every email on open");
 }
 
 // ── Check if an email is currently open ──────────────────────
@@ -61,7 +66,11 @@ function checkForOpenEmail() {
 function checkGmail() {
   // Gmail email body container
   const emailBodies = document.querySelectorAll(".a3s.aiL");
-  if (!emailBodies.length) return;
+  if (!emailBodies.length) {
+    // No email open — reset fingerprint so next email will be scanned
+    currentEmailFingerprint = null;
+    return;
+  }
 
   // Get the latest/visible email body
   const emailBody = emailBodies[emailBodies.length - 1];
@@ -69,10 +78,13 @@ function checkGmail() {
 
   if (!bodyText || bodyText.length < 20) return;
 
-  // Create a fingerprint to avoid re-scanning
+  // Fingerprint the currently open email — only skip if we're still
+  // looking at the exact same email (prevents rapid re-scans while
+  // the same email is on screen). When the user opens a different
+  // email the fingerprint changes, triggering a fresh scan.
   const fingerprint = hashString(bodyText.substring(0, 200));
-  if (scannedEmails.has(fingerprint)) return;
-  scannedEmails.add(fingerprint);
+  if (fingerprint === currentEmailFingerprint) return;
+  currentEmailFingerprint = fingerprint;
 
   // Extract sender
   let sender = "";
@@ -95,7 +107,7 @@ function checkGmail() {
   // Get full HTML for link analysis
   const bodyHtml = emailBody.innerHTML || "";
 
-  console.log(`[PhishGuard Email] Gmail email detected — sender: ${sender}, subject: ${subject.substring(0, 40)}`);
+  console.log(`[PhishGuard Email] Gmail email detected — scanning fresh — sender: ${sender}, subject: ${subject.substring(0, 40)}`);
   scanEmail(bodyText, bodyHtml, sender, subject, emailBody);
 }
 
@@ -108,14 +120,19 @@ function checkOutlook() {
                       document.querySelector("[aria-label='Message body']") ||
                       document.querySelector(".wide-content-host");
 
-  if (!readingPane) return;
+  if (!readingPane) {
+    // No email open — reset fingerprint
+    currentEmailFingerprint = null;
+    return;
+  }
 
   const bodyText = readingPane.innerText || readingPane.textContent || "";
   if (!bodyText || bodyText.length < 20) return;
 
+  // Same current-email-only tracking as Gmail
   const fingerprint = hashString(bodyText.substring(0, 200));
-  if (scannedEmails.has(fingerprint)) return;
-  scannedEmails.add(fingerprint);
+  if (fingerprint === currentEmailFingerprint) return;
+  currentEmailFingerprint = fingerprint;
 
   // Extract sender
   let sender = "";
@@ -138,7 +155,7 @@ function checkOutlook() {
 
   const bodyHtml = readingPane.innerHTML || "";
 
-  console.log(`[PhishGuard Email] Outlook email detected — sender: ${sender}, subject: ${subject.substring(0, 40)}`);
+  console.log(`[PhishGuard Email] Outlook email detected — scanning fresh — sender: ${sender}, subject: ${subject.substring(0, 40)}`);
   scanEmail(bodyText, bodyHtml, sender, subject, readingPane);
 }
 

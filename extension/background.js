@@ -12,8 +12,10 @@ const CHECK_URL_ENDPOINT = `${API_BASE}/check_url`;
 // ── Runtime stats ──────────────────────────────────────────────
 let stats = { totalScanned: 0, phishingDetected: 0, safeDetected: 0, errors: 0 };
 
-// Pages already scanned in this session (avoid double-scanning)
-const scannedTabs = new Map();
+// Track tabs with in-flight scans to prevent duplicate concurrent requests.
+// Unlike before, this does NOT permanently cache results — every new page load
+// triggers a fresh scan.
+const scanningTabs = new Set();
 
 // ── Extension installed ────────────────────────────────────────
 chrome.runtime.onInstalled.addListener(() => {
@@ -31,17 +33,21 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // Skip non-HTTP pages (chrome://, about:, extensions, etc.)
   if (!url || (!url.startsWith("http://") && !url.startsWith("https://"))) return;
 
-  // Skip if we already scanned this exact URL in this tab
-  if (scannedTabs.get(tabId) === url) return;
-  scannedTabs.set(tabId, url);
+  // Skip only if this tab already has a scan in-flight (prevents duplicates)
+  if (scanningTabs.has(tabId)) return;
 
   console.log(`[PhishGuard] Page loaded — scanning: ${url}`);
-  await sendForAnalysis(url, tabId);
+  scanningTabs.add(tabId);
+  try {
+    await sendForAnalysis(url, tabId);
+  } finally {
+    scanningTabs.delete(tabId);
+  }
 });
 
 // Clean up when tabs are closed
 chrome.tabs.onRemoved.addListener((tabId) => {
-  scannedTabs.delete(tabId);
+  scanningTabs.delete(tabId);
 });
 
 // ── Send URL to backend /check_url (with retry for cold starts) ─
@@ -193,9 +199,6 @@ chrome.commands.onCommand.addListener(async (command) => {
 
     console.log(`[PhishGuard] Quick Scan (Ctrl+Shift+P): ${tab.url}`);
 
-    // Force rescan (clear cache for this tab)
-    scannedTabs.delete(tab.id);
-
     // Show scanning notification
     chrome.notifications.create({
       type: "basic",
@@ -215,8 +218,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     reply({ stats });
   }
   if (msg.type === "QUICK_SCAN") {
-    // Force rescan from popup
-    scannedTabs.delete(msg.tabId);
+    // Force rescan from popup — no cache to clear, every scan is fresh
     sendForAnalysis(msg.url, msg.tabId);
     reply({ ok: true });
   }
