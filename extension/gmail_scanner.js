@@ -17,6 +17,9 @@ const CHECK_EMAIL_URL = `${API_BASE}/check_email`;
 // every email is scanned fresh each time the user opens it.
 let currentEmailFingerprint = null;
 
+// Track the current URL to detect SPA navigation (Gmail changes hash)
+let lastKnownUrl = window.location.href;
+
 // Detect which email provider we're on
 const HOST = window.location.hostname;
 const IS_GMAIL = HOST.includes("mail.google.com");
@@ -32,23 +35,63 @@ if (IS_GMAIL || IS_OUTLOOK) {
 }
 
 function startObserver() {
-  // Watch for DOM changes (email opens trigger DOM mutations)
+  // ── 1. URL change detection (most reliable for Gmail SPA) ────
+  // Gmail changes the URL hash (#inbox/FMfcg...) when opening emails.
+  // This is the most reliable trigger for email navigation.
+  function onUrlChange() {
+    const currentUrl = window.location.href;
+    if (currentUrl !== lastKnownUrl) {
+      console.log(`[PhishGuard Email] URL changed — resetting for new email`);
+      lastKnownUrl = currentUrl;
+      currentEmailFingerprint = null; // Reset so next check triggers a scan
+
+      // Small delay to let Gmail render the new email's DOM
+      setTimeout(() => checkForOpenEmail(), 600);
+      setTimeout(() => checkForOpenEmail(), 1500); // Retry in case DOM was slow
+    }
+  }
+
+  // Listen for SPA navigation events
+  window.addEventListener("hashchange", onUrlChange);
+  window.addEventListener("popstate", onUrlChange);
+
+  // Gmail also uses pushState/replaceState — intercept those
+  const origPushState = history.pushState;
+  const origReplaceState = history.replaceState;
+  history.pushState = function (...args) {
+    origPushState.apply(this, args);
+    onUrlChange();
+  };
+  history.replaceState = function (...args) {
+    origReplaceState.apply(this, args);
+    onUrlChange();
+  };
+
+  // ── 2. DOM mutation observer (backup — catches non-navigation opens) ──
   const observer = new MutationObserver(debounce(() => {
     checkForOpenEmail();
-  }, 800));
+  }, 500));
 
-  observer.observe(document.body, {
+  // Target the Gmail main content area instead of entire body (less noise)
+  const targetNode = IS_GMAIL
+    ? (document.querySelector("[role='main']") || document.body)
+    : document.body;
+
+  observer.observe(targetNode, {
     childList: true,
     subtree: true,
   });
 
-  // Also run a periodic check every 3 seconds to catch emails that
-  // open without triggering a detectable DOM mutation.
-  setInterval(() => checkForOpenEmail(), 3000);
+  // ── 3. Periodic fallback (catches anything the above missed) ──
+  setInterval(() => {
+    // Also check for URL changes in case events were missed
+    onUrlChange();
+    checkForOpenEmail();
+  }, 2500);
 
   // Also check immediately on load
   checkForOpenEmail();
-  console.log("[PhishGuard Email] Observer started — scanning every email on open");
+  console.log("[PhishGuard Email] Observer started — watching URL changes, DOM mutations, and polling");
 }
 
 // ── Check if an email is currently open ──────────────────────
@@ -78,11 +121,10 @@ function checkGmail() {
 
   if (!bodyText || bodyText.length < 20) return;
 
-  // Fingerprint the currently open email — only skip if we're still
-  // looking at the exact same email (prevents rapid re-scans while
-  // the same email is on screen). When the user opens a different
-  // email the fingerprint changes, triggering a fresh scan.
-  const fingerprint = hashString(bodyText.substring(0, 200));
+  // Fingerprint the currently open email — include sender + subject + body
+  // for a more unique hash. Only skip if we're still looking at the exact
+  // same email (prevents rapid re-scans while the same email is on screen).
+  const fingerprint = hashString(`${sender}|${subject}|${bodyText.substring(0, 500)}`);
   if (fingerprint === currentEmailFingerprint) return;
   currentEmailFingerprint = fingerprint;
 
@@ -129,8 +171,8 @@ function checkOutlook() {
   const bodyText = readingPane.innerText || readingPane.textContent || "";
   if (!bodyText || bodyText.length < 20) return;
 
-  // Same current-email-only tracking as Gmail
-  const fingerprint = hashString(bodyText.substring(0, 200));
+  // Same fingerprint approach as Gmail — include sender + subject + body
+  const fingerprint = hashString(`${sender}|${subject}|${bodyText.substring(0, 500)}`);
   if (fingerprint === currentEmailFingerprint) return;
   currentEmailFingerprint = fingerprint;
 
