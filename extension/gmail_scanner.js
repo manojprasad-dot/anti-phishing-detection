@@ -104,31 +104,96 @@ function checkForOpenEmail() {
   }
 }
 
+// ── Extract Gmail thread ID from URL hash ────────────────────
+
+function getGmailThreadId() {
+  // Gmail URLs: #inbox/FMfcgz... or #sent/FMfcgz... or #label/Name/FMfcgz...
+  const hash = window.location.hash;
+  const parts = hash.split("/");
+  // Thread ID is the last segment that looks like an ID (starts with FM, KT, etc.)
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i] && parts[i].length > 10 && /^[A-Za-z]/.test(parts[i])) {
+      return parts[i];
+    }
+  }
+  return null;
+}
+
+// Track the Gmail thread ID separately for reliable navigation detection
+let lastGmailThreadId = null;
+
 // ── Gmail Extraction ─────────────────────────────────────────
 
 function checkGmail() {
-  // Gmail email body container
+  // Check if we're viewing an email (thread ID present in URL)
+  const threadId = getGmailThreadId();
+
+  if (!threadId) {
+    // Not viewing an email (inbox list, settings, etc.)
+    currentEmailFingerprint = null;
+    lastGmailThreadId = null;
+    return;
+  }
+
+  // If thread ID changed, we KNOW it's a different email — force reset
+  if (threadId !== lastGmailThreadId) {
+    console.log(`[PhishGuard Email] New thread detected: ${threadId.substring(0, 12)}...`);
+    lastGmailThreadId = threadId;
+    currentEmailFingerprint = null;
+
+    // Gmail needs time to render the email DOM — wait and retry
+    waitForEmailBody(threadId, 0);
+    return;
+  }
+
+  // Same thread — do a normal check (handles initial load)
+  extractAndScanGmail();
+}
+
+// Wait for Gmail to render the email body DOM (retries up to 5 times)
+function waitForEmailBody(threadId, attempt) {
+  if (attempt >= 8) {
+    console.warn(`[PhishGuard Email] Email body not found after 8 attempts for thread ${threadId.substring(0, 12)}`);
+    return;
+  }
+
+  // Try broader selectors — .a3s is the body container, .aiL is added when expanded
+  const emailBody = document.querySelector(".a3s.aiL") || document.querySelector(".a3s");
+  const bodyText = emailBody ? (emailBody.innerText || emailBody.textContent || "") : "";
+
+  if (!emailBody || bodyText.length < 20) {
+    // DOM not ready yet — retry with increasing delay
+    const delay = 300 + (attempt * 300); // 300ms, 600ms, 900ms, ...
+    setTimeout(() => {
+      // Make sure we're still on the same thread (user might have navigated away)
+      if (getGmailThreadId() === threadId) {
+        waitForEmailBody(threadId, attempt + 1);
+      }
+    }, delay);
+    return;
+  }
+
+  // DOM is ready — extract and scan
+  extractAndScanGmail();
+}
+
+function extractAndScanGmail() {
+  // Gmail email body container — try expanded first, then any
   const emailBodies = document.querySelectorAll(".a3s.aiL");
-  if (!emailBodies.length) {
-    // No email open — reset fingerprint so next email will be scanned
+  const fallbackBodies = emailBodies.length ? emailBodies : document.querySelectorAll(".a3s");
+
+  if (!fallbackBodies.length) {
     currentEmailFingerprint = null;
     return;
   }
 
   // Get the latest/visible email body
-  const emailBody = emailBodies[emailBodies.length - 1];
+  const emailBody = fallbackBodies[fallbackBodies.length - 1];
   const bodyText = emailBody.innerText || emailBody.textContent || "";
 
   if (!bodyText || bodyText.length < 20) return;
 
-  // Fingerprint the currently open email — include sender + subject + body
-  // for a more unique hash. Only skip if we're still looking at the exact
-  // same email (prevents rapid re-scans while the same email is on screen).
-  const fingerprint = hashString(`${sender}|${subject}|${bodyText.substring(0, 500)}`);
-  if (fingerprint === currentEmailFingerprint) return;
-  currentEmailFingerprint = fingerprint;
-
-  // Extract sender
+  // Extract sender FIRST (before fingerprint)
   let sender = "";
   // Gmail sender: span with email attribute or .gD class
   const senderEl = document.querySelector(".gD[email]") ||
@@ -137,7 +202,7 @@ function checkGmail() {
     sender = senderEl.getAttribute("email") || senderEl.textContent || "";
   }
 
-  // Extract subject
+  // Extract subject FIRST (before fingerprint)
   let subject = "";
   const subjectEl = document.querySelector("h2.hP") ||
                     document.querySelector("[data-thread-perm-id] h2") ||
@@ -146,10 +211,15 @@ function checkGmail() {
     subject = subjectEl.textContent || "";
   }
 
+  // NOW build fingerprint with all data available
+  const fingerprint = hashString(`${sender}|${subject}|${bodyText.substring(0, 500)}`);
+  if (fingerprint === currentEmailFingerprint) return;
+  currentEmailFingerprint = fingerprint;
+
   // Get full HTML for link analysis
   const bodyHtml = emailBody.innerHTML || "";
 
-  console.log(`[PhishGuard Email] Gmail email detected — scanning fresh — sender: ${sender}, subject: ${subject.substring(0, 40)}`);
+  console.log(`[PhishGuard Email] Gmail email detected — scanning — sender: ${sender}, subject: ${subject.substring(0, 40)}`);
   scanEmail(bodyText, bodyHtml, sender, subject, emailBody);
 }
 
@@ -171,12 +241,7 @@ function checkOutlook() {
   const bodyText = readingPane.innerText || readingPane.textContent || "";
   if (!bodyText || bodyText.length < 20) return;
 
-  // Same fingerprint approach as Gmail — include sender + subject + body
-  const fingerprint = hashString(`${sender}|${subject}|${bodyText.substring(0, 500)}`);
-  if (fingerprint === currentEmailFingerprint) return;
-  currentEmailFingerprint = fingerprint;
-
-  // Extract sender
+  // Extract sender FIRST (before fingerprint)
   let sender = "";
   const senderEl = document.querySelector("[role='heading'] span[title*='@']") ||
                    document.querySelector(".lpc_hdr_m span") ||
@@ -187,7 +252,7 @@ function checkOutlook() {
     if (emailMatch) sender = emailMatch[0];
   }
 
-  // Extract subject
+  // Extract subject FIRST (before fingerprint)
   let subject = "";
   const subjectEl = document.querySelector("[role='heading']") ||
                     document.querySelector(".lpc_hdr_s");
@@ -195,9 +260,14 @@ function checkOutlook() {
     subject = subjectEl.textContent || "";
   }
 
+  // NOW build fingerprint with all data available
+  const fingerprint = hashString(`${sender}|${subject}|${bodyText.substring(0, 500)}`);
+  if (fingerprint === currentEmailFingerprint) return;
+  currentEmailFingerprint = fingerprint;
+
   const bodyHtml = readingPane.innerHTML || "";
 
-  console.log(`[PhishGuard Email] Outlook email detected — scanning fresh — sender: ${sender}, subject: ${subject.substring(0, 40)}`);
+  console.log(`[PhishGuard Email] Outlook email detected — scanning — sender: ${sender}, subject: ${subject.substring(0, 40)}`);
   scanEmail(bodyText, bodyHtml, sender, subject, readingPane);
 }
 
