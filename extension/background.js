@@ -50,17 +50,41 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   scanningTabs.delete(tabId);
 });
 
+// ── Wake-up ping: nudge Render out of cold sleep ────────────────
+async function wakeUpBackend() {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort("wake-up ping timeout"), 10000);
+    await fetch(`${API_BASE}/health`, {
+      method: "GET",
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    console.log("[PhishGuard] Backend is awake.");
+  } catch {
+    // Doesn't matter if it fails — the purpose is just to trigger the spin-up
+    console.log("[PhishGuard] Wake-up ping sent (backend may still be starting).");
+  }
+}
+
 // ── Send URL to backend /check_url (with retry for cold starts) ─
 async function sendForAnalysis(url, tabId) {
   const MAX_RETRIES = 3;
   let lastError = null;
 
+  // On first attempt, send a lightweight ping to wake up the Render server.
+  // This triggers the cold-start process so the real request has a warm server.
+  await wakeUpBackend();
+
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      // First attempt: 30s (Render cold start), retries: 15s
-      const timeoutMs = attempt === 0 ? 30000 : 15000;
+      // Generous timeouts: Render free tier can take 50-90s on cold start
+      const timeoutMs = attempt === 0 ? 90000 : 30000;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      const timeout = setTimeout(
+        () => controller.abort(`Request timed out after ${timeoutMs / 1000}s`),
+        timeoutMs
+      );
 
       const res = await fetch(CHECK_URL_ENDPOINT, {
         method: "POST",
@@ -101,16 +125,16 @@ async function sendForAnalysis(url, tabId) {
       lastError = err;
 
       if (attempt < MAX_RETRIES) {
-        // Render cold start takes ~30s — give it time
-        const delay = attempt === 0 ? 5000 : 3000;
-        console.warn(`[PhishGuard] Attempt ${attempt + 1} failed: ${err.message}. Retrying in ${delay/1000}s...`);
+        // Exponential backoff: 8s → 12s → 16s (gives Render time to fully boot)
+        const delay = 8000 + (attempt * 4000);
+        console.warn(`[PhishGuard] Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${err.message}. Retrying in ${delay / 1000}s...`);
         await new Promise(r => setTimeout(r, delay));
       }
     }
   }
 
   // All retries failed
-  console.error(`[PhishGuard] Analysis failed: ${lastError.message}`);
+  console.error(`[PhishGuard] Analysis failed after ${MAX_RETRIES + 1} attempts: ${lastError.message}`);
   stats.errors++;
   chrome.storage.local.set({ stats });
 
