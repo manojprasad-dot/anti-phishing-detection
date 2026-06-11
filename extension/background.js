@@ -147,18 +147,33 @@ async function sendForAnalysis(url, tabId) {
 }
 
 // ── Send result to content.js ──────────────────────────────────
-function sendToContentScript(tabId, result, url) {
+async function sendToContentScript(tabId, result, url) {
   const isPhishing = result.result === "phishing";
 
-  // Update badge
-  chrome.action.setBadgeText({
-    text: isPhishing ? "!" : "OK",
-    tabId: tabId
-  });
-  chrome.action.setBadgeBackgroundColor({
-    color: isPhishing ? "#FF3B30" : "#34C759",
-    tabId: tabId
-  });
+  // Guard: check if the tab still exists before interacting with it.
+  // The tab may have been closed while the backend was responding.
+  try {
+    await chrome.tabs.get(tabId);
+  } catch {
+    console.warn(`[PhishGuard] Tab ${tabId} no longer exists — skipping UI update for ${url}`);
+    // Still save to alert history below
+    saveToAlertHistory(url, result, isPhishing);
+    return;
+  }
+
+  try {
+    // Update badge
+    await chrome.action.setBadgeText({
+      text: isPhishing ? "!" : "OK",
+      tabId: tabId
+    });
+    await chrome.action.setBadgeBackgroundColor({
+      color: isPhishing ? "#FF3B30" : "#34C759",
+      tabId: tabId
+    });
+  } catch {
+    // Tab may have closed between the check and the badge update — ignore
+  }
 
   if (isPhishing) {
     // Redirect to warning page (works even if page didn't load)
@@ -168,7 +183,11 @@ function sendToContentScript(tabId, result, url) {
       `&confidence=${result.confidence}` +
       `&reasons=${encodeURIComponent(reasons)}`;
 
-    chrome.tabs.update(tabId, { url: warningUrl });
+    try {
+      await chrome.tabs.update(tabId, { url: warningUrl });
+    } catch {
+      // Tab closed — warning can't be shown
+    }
 
     // Also try to send to content.js (backup for pages that loaded)
     chrome.tabs.sendMessage(tabId, {
@@ -199,6 +218,11 @@ function sendToContentScript(tabId, result, url) {
   }
 
   // Save to alert history
+  saveToAlertHistory(url, result, isPhishing);
+}
+
+// ── Persist scan result to chrome.storage alert history ─────────
+function saveToAlertHistory(url, result, isPhishing) {
   chrome.storage.local.get(["alerts"], (data) => {
     const alerts = [
       {
