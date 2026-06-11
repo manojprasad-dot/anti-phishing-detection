@@ -25,6 +25,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case "ANALYSIS_ERROR":
       showErrorBadge(message.error);
       break;
+    case "SCANNING_DELAYED":
+      showWakingUpBadge(message.message);
+      break;
   }
 });
 
@@ -85,6 +88,11 @@ style.textContent = `
   #phishguard-badge .pg-dot.green { background: #34C759; box-shadow: 0 0 6px rgba(52,199,89,0.5); }
   #phishguard-badge .pg-dot.red { background: #FF3B30; box-shadow: 0 0 6px rgba(255,59,48,0.5); }
   #phishguard-badge .pg-dot.orange { background: #FF9500; }
+  #phishguard-badge.waking {
+    background: rgba(20,20,40,0.95);
+    color: #5AC8FA;
+    border: 1px solid rgba(90,200,250,0.3);
+  }
   @keyframes pg-badge-in {
     from { transform: translateY(20px) scale(0.9); opacity: 0; }
     to { transform: translateY(0) scale(1); opacity: 1; }
@@ -107,6 +115,19 @@ function showScanningBadge() {
   statusBadge.innerHTML = `
     <div class="pg-spinner"></div>
     <span>PhishGuard scanning...</span>
+  `;
+  document.body.appendChild(statusBadge);
+}
+
+// ─── Waking Up Badge (shown during cold start) ───────────────
+function showWakingUpBadge(message) {
+  removeBadge();
+  statusBadge = document.createElement("div");
+  statusBadge.id = "phishguard-badge";
+  statusBadge.className = "waking";
+  statusBadge.innerHTML = `
+    <div class="pg-spinner" style="border-top-color:#5AC8FA"></div>
+    <span>${message || "Server waking up — please wait..."}</span>
   `;
   document.body.appendChild(statusBadge);
 }

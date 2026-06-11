@@ -88,40 +88,90 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   scanningTabs.delete(tabId);
 });
 
-// ── Wake-up ping: nudge Render out of cold sleep ────────────────
-async function wakeUpBackend() {
+// ── Wake-up ping: poll Render until the server is alive ─────────
+// Render free tier takes 50-90s to cold start. We poll /health
+// every few seconds and only proceed once we get a 200 OK.
+async function wakeUpBackend(tabId) {
+  const MAX_WAIT_MS = 120_000; // 2 minutes max
+  const POLL_INTERVAL = 5_000; // check every 5s
+  const startTime = Date.now();
+
+  // Quick check — server might already be warm
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort("wake-up ping timeout"), 10000);
-    await fetch(`${API_BASE}/health`, {
-      method: "GET",
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-    console.log("[PhishGuard] Backend is awake.");
-  } catch {
-    // Doesn't matter if it fails — the purpose is just to trigger the spin-up
-    console.log("[PhishGuard] Wake-up ping sent (backend may still be starting).");
+    const t = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`${API_BASE}/health`, { signal: controller.signal });
+    clearTimeout(t);
+    if (res.ok) {
+      console.log("[PhishGuard] Backend is already warm.");
+      return true;
+    }
+  } catch { /* expected during cold start */ }
+
+  // Server is cold — start polling and notify the user
+  console.log("[PhishGuard] Backend is cold — waiting for it to wake up...");
+  notifyTab(tabId, {
+    type: "SCANNING_DELAYED",
+    message: "Server waking up — please wait..."
+  });
+
+  while (Date.now() - startTime < MAX_WAIT_MS) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL));
+
+    try {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(`${API_BASE}/health`, { signal: controller.signal });
+      clearTimeout(t);
+
+      if (res.ok) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+        console.log(`[PhishGuard] Backend is awake after ${elapsed}s.`);
+        return true;
+      }
+    } catch {
+      // Still booting — keep waiting
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+      console.log(`[PhishGuard] Still waiting for backend... (${elapsed}s)`);
+    }
   }
+
+  // Gave up after 2 minutes
+  console.error("[PhishGuard] Backend did not wake up within 2 minutes.");
+  return false;
 }
 
-// ── Send URL to backend /check_url (with retry for cold starts) ─
-async function sendForAnalysis(url, tabId) {
-  const MAX_RETRIES = 3;
-  let lastError = null;
+// ── Safe helper to message a tab (fire-and-forget) ──────────────
+function notifyTab(tabId, message) {
+  chrome.tabs.sendMessage(tabId, message).catch(() => {});
+}
 
-  // On first attempt, send a lightweight ping to wake up the Render server.
-  // This triggers the cold-start process so the real request has a warm server.
-  await wakeUpBackend();
+// ── Send URL to backend /check_url ──────────────────────────────
+async function sendForAnalysis(url, tabId) {
+  // Step 1: Make sure the backend is alive before sending the real request
+  const serverReady = await wakeUpBackend(tabId);
+
+  if (!serverReady) {
+    stats.errors++;
+    chrome.storage.local.set({ stats });
+    notifyTab(tabId, {
+      type: "ANALYSIS_ERROR",
+      error: "Backend server is unavailable. Please try again later.",
+      url: url
+    });
+    return;
+  }
+
+  // Step 2: Server is warm — send the real request (with 1 retry for safety)
+  const MAX_RETRIES = 1;
+  let lastError = null;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      // Generous timeouts: Render free tier can take 50-90s on cold start
-      const timeoutMs = attempt === 0 ? 90000 : 30000;
       const controller = new AbortController();
       const timeout = setTimeout(
-        () => controller.abort(`Request timed out after ${timeoutMs / 1000}s`),
-        timeoutMs
+        () => controller.abort("Request timed out"),
+        30000 // 30s is plenty for a warm server
       );
 
       const res = await fetch(CHECK_URL_ENDPOINT, {
@@ -157,31 +207,28 @@ async function sendForAnalysis(url, tabId) {
       // Send result to content.js immediately
       sendToContentScript(tabId, result, url);
 
-      return; // Success — exit retry loop
+      return; // Success — exit
 
     } catch (err) {
       lastError = err;
 
       if (attempt < MAX_RETRIES) {
-        // Exponential backoff: 8s → 12s → 16s (gives Render time to fully boot)
-        const delay = 8000 + (attempt * 4000);
-        console.warn(`[PhishGuard] Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed: ${err.message}. Retrying in ${delay / 1000}s...`);
-        await new Promise(r => setTimeout(r, delay));
+        console.warn(`[PhishGuard] Attempt ${attempt + 1} failed: ${err.message}. Retrying in 3s...`);
+        await new Promise(r => setTimeout(r, 3000));
       }
     }
   }
 
   // All retries failed
-  console.error(`[PhishGuard] Analysis failed after ${MAX_RETRIES + 1} attempts: ${lastError.message}`);
+  console.error(`[PhishGuard] Analysis failed: ${lastError.message}`);
   stats.errors++;
   chrome.storage.local.set({ stats });
 
-  // Notify content.js about the error
-  chrome.tabs.sendMessage(tabId, {
+  notifyTab(tabId, {
     type: "ANALYSIS_ERROR",
     error: lastError.message,
     url: url
-  }).catch(() => {});
+  });
 }
 
 // ── Send result to content.js ──────────────────────────────────
