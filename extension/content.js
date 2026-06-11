@@ -3,6 +3,11 @@
 // Shows status indicator on every page load
 // ============================================================
 
+// Guard: if this script was re-injected after an extension update,
+// clean up any leftover badge from the previous injection first.
+const existingBadge = document.getElementById("phishguard-badge");
+if (existingBadge) existingBadge.remove();
+
 let statusBadge = null;
 
 // Show "Scanning..." immediately when page loads

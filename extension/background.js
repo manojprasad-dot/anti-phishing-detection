@@ -17,11 +17,49 @@ let stats = { totalScanned: 0, phishingDetected: 0, safeDetected: 0, errors: 0 }
 // triggers a fresh scan.
 const scanningTabs = new Set();
 
-// ── Extension installed ────────────────────────────────────────
-chrome.runtime.onInstalled.addListener(() => {
-  console.log("[PhishGuard] Extension installed and activated.");
-  chrome.storage.local.set({ stats, alerts: [], feedbackLog: [] });
+// ── Extension installed / updated ──────────────────────────────
+chrome.runtime.onInstalled.addListener(async (details) => {
+  console.log(`[PhishGuard] Extension ${details.reason} (v${chrome.runtime.getManifest().version}).`);
+
+  // Only reset stats on fresh install, not on update
+  if (details.reason === "install") {
+    chrome.storage.local.set({ stats, alerts: [], feedbackLog: [] });
+  }
+
+  // Re-inject content scripts into all already-open tabs so the extension
+  // works immediately after update — no need to delete and reinstall.
+  await reinjectContentScripts();
 });
+
+// ── Re-inject content scripts into all open HTTP tabs ──────────
+async function reinjectContentScripts() {
+  const tabs = await chrome.tabs.query({ url: ["http://*/*", "https://*/*"] });
+  console.log(`[PhishGuard] Re-injecting content scripts into ${tabs.length} open tab(s)...`);
+
+  for (const tab of tabs) {
+    try {
+      // Inject the main content script into every HTTP tab
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["content.js"]
+      });
+
+      // Inject gmail_scanner.js only into Gmail/Outlook tabs
+      const isEmailTab = /mail\.google\.com|outlook\.(live|office|office365)\.com/.test(tab.url);
+      if (isEmailTab) {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ["gmail_scanner.js"]
+        });
+      }
+
+      console.log(`[PhishGuard]   ✓ Injected into tab ${tab.id}: ${tab.url.slice(0, 60)}`);
+    } catch (err) {
+      // Some tabs may refuse injection (e.g. chrome:// pages that slipped through)
+      console.warn(`[PhishGuard]   ✗ Could not inject into tab ${tab.id}: ${err.message}`);
+    }
+  }
+}
 
 // ── Automatic website scanning: chrome.tabs.onUpdated ──────────
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
